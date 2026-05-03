@@ -1,0 +1,28 @@
+{
+  "name": "ai-team-orchestrator",
+  "version": "0.1.0",
+  "description": "Configurable CLI orchestrator for AI development teams.",
+  "type": "module",
+  "bin": {
+    "ai-team": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "prepack": "npm run build"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
