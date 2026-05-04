@@ -93,7 +93,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     left: 0,
     width: 1,
     height: "12%",
-    style: { bg: "#93c5fd" }
+    style: { bg: "#c4b5fd" }
   });
 
   blessed.box({
@@ -102,33 +102,46 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     left: 1,
     width: "77%",
     height: "12%",
-    style: { bg: "#1b1f2a" }
+    style: { bg: "#242833" }
+  });
+
+  blessed.box({
+    parent: screen,
+    bottom: 1,
+    left: 2,
+    width: "75%",
+    height: "12%",
+    border: "line",
+    style: {
+      bg: "#242833",
+      border: { fg: "#6b7280" }
+    }
   });
 
   const inputPrompt = blessed.box({
     parent: screen,
     bottom: 2,
-    left: 3,
-    width: 18,
+    left: 4,
+    width: 20,
     height: 1,
     tags: true,
     content: `${command}>`,
     style: {
-      bg: "#1b1f2a",
-      fg: "#93c5fd"
+      bg: "#242833",
+      fg: "#ddd6fe"
     }
   });
 
   const input = blessed.textbox({
     parent: screen,
     bottom: 2,
-    left: 21,
-    width: "56%",
+    left: 24,
+    width: "52%",
     height: 1,
     inputOnFocus: true,
     tags: true,
     style: {
-      bg: "#1b1f2a",
+      bg: "#242833",
       fg: "#f8fafc"
     }
   });
@@ -196,42 +209,154 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
       return `${selected} ${index + 1}. ${basename(sessionPath).replace("ui-session-", "")}`;
     })];
 
+    openMenu("sessions", items, (index) => {
+      if (index === 0) void selectSession("new").then(() => setPrompt());
+      else void selectSession(String(index)).then(() => setPrompt());
+    }, {
+      n: () => void selectSession("new").then(() => setPrompt())
+    });
+  }
+
+  function openCommandMenu(): void {
+    const commandEntries = [...config.commands.entries()];
+    const items = commandEntries.map(([name, commandConfig]) => {
+      const selected = name === command ? "*" : " ";
+      return commandConfig.description ? `${selected} ${name} - ${commandConfig.description}` : `${selected} ${name}`;
+    });
+
+    openMenu("commands", items, (index) => {
+      const nextCommand = commandEntries[index]?.[0];
+      if (!nextCommand) return;
+      command = nextCommand;
+      state.command = nextCommand;
+      addLog(`{#f6d365-fg}command{/} ${command}`);
+      updateSide();
+      setPrompt();
+    });
+  }
+
+  function openProviderMenu(): void {
+    const items = [
+      state.providerCommand ? `Current: ${state.providerCommand}` : "Current: not configured",
+      "Set: opencode run",
+      "Clear provider"
+    ];
+
+    openMenu("provider", items, (index) => {
+      if (index === 0) {
+        addLog(state.providerCommand ? `{#f6d365-fg}provider{/} ${state.providerCommand}` : "{#f6d365-fg}provider{/} not configured");
+        return;
+      }
+      if (index === 1) {
+        state.providerCommand = "opencode run";
+        config.settings.provider = { ...config.settings.provider, command: state.providerCommand };
+        void saveSettings(config.settings, rootDir).then((path) => {
+          addLog(`{#f6d365-fg}provider saved{/} ${state.providerCommand}`);
+          addLog(`{#cbd5e1-fg}settings{/} ${path}`);
+          updateSide();
+          setPrompt();
+        });
+        return;
+      }
+      state.providerCommand = undefined;
+      config.settings.provider = { ...config.settings.provider, command: undefined };
+      void saveSettings(config.settings, rootDir).then((path) => {
+        addLog("{#f6d365-fg}provider cleared{/}");
+        addLog(`{#cbd5e1-fg}settings{/} ${path}`);
+        updateSide();
+        setPrompt();
+      });
+    });
+  }
+
+  function openActionsMenu(): void {
+    const items = [
+      state.busy ? "Stop current task" : "Stop current task (nothing running)",
+      `Save '${command}' as default command`,
+      "Show help",
+      "Exit"
+    ];
+
+    openMenu("actions", items, (index) => {
+      if (index === 0) {
+        stopCurrentRun();
+        setPrompt();
+        return;
+      }
+      if (index === 1) {
+        config.settings.ui = { ...config.settings.ui, defaultCommand: command };
+        void saveSettings(config.settings, rootDir).then((path) => {
+          addLog(`{#f6d365-fg}default command saved{/} ${command}`);
+          addLog(`{#cbd5e1-fg}settings{/} ${path}`);
+          setPrompt();
+        });
+        return;
+      }
+      if (index === 2) {
+        addLog("Ctrl+P opens menu. Use arrows and Enter. Esc closes menus. Type tasks in the input. Esc stops a running task.");
+        setPrompt();
+        return;
+      }
+      if (state.busy) stopCurrentRun();
+      screen.destroy();
+    });
+  }
+
+  function openCommandPalette(): void {
+    const items = [
+      "Sessions",
+      "Commands",
+      "Provider",
+      "Actions"
+    ];
+
+    openMenu("menu", items, (index) => {
+      if (index === 0) void openSessionMenu();
+      else if (index === 1) openCommandMenu();
+      else if (index === 2) openProviderMenu();
+      else openActionsMenu();
+    });
+  }
+
+  function openMenu(label: string, items: string[], onSelect: (index: number) => void, extraKeys: Record<string, () => void> = {}): void {
     const menu = blessed.list({
       parent: screen,
       top: "center",
       left: "center",
-      width: "62%",
-      height: "60%",
+      width: "64%",
+      height: Math.min(Math.max(items.length + 4, 10), 24),
       border: "line",
-      label: " sessions ",
+      label: ` ${label} `,
       keys: true,
       mouse: true,
       vi: true,
       tags: true,
       items,
       style: {
-        bg: "#151923",
+        bg: "#181a22",
         fg: "#e5e7eb",
-        border: { fg: "#64748b" },
-        selected: { bg: "#334155", fg: "#f8fafc" }
+        border: { fg: "#8b7aa8" },
+        selected: { bg: "#4a4258", fg: "#f8fafc" }
       }
     });
 
     const close = (): void => {
       menu.detach();
       input.focus();
+      input.readInput();
       screen.render();
     };
 
     menu.key(["escape", "q"], close);
-    menu.key(["n"], () => {
-      close();
-      void selectSession("new").then(() => setPrompt());
-    });
+    for (const [key, handler] of Object.entries(extraKeys)) {
+      menu.key([key], () => {
+        close();
+        handler();
+      });
+    }
     menu.on("select", (_item, index) => {
       close();
-      if (index === 0) void selectSession("new").then(() => setPrompt());
-      else void selectSession(String(index)).then(() => setPrompt());
+      onSelect(index);
     });
 
     menu.focus();
@@ -319,9 +444,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
       return;
     }
     if (text === "/commands") {
-      for (const [name, commandConfig] of config.commands.entries()) {
-        addLog(commandConfig.description ? `${name} - ${commandConfig.description}` : name);
-      }
+      openCommandMenu();
       setPrompt();
       return;
     }
@@ -377,7 +500,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
       return;
     }
     if (text === "/help") {
-      addLog("/commands, /command <name>, /default, /sessions, /session <n|name|new>, /stop, /provider, /provider set <command>, /provider clear, /exit. Type any task to run current command.");
+      addLog("Ctrl+P opens menu. Sections: Sessions, Commands, Provider, Actions. Slash commands still work as shortcuts.");
       setPrompt();
       return;
     }
@@ -398,6 +521,11 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     screen.destroy();
   });
   screen.key(["escape"], () => stopCurrentRun());
+  screen.key(["C-p", "C-з", "C-З"], () => openCommandPalette());
+  screen.program.input.on("data", (chunk: Buffer | string) => {
+    const value = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+    if (value.includes("\x10")) openCommandPalette();
+  });
   screen.key(["tab"], () => {
     input.focus();
     input.readInput();
@@ -405,7 +533,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
 
   addLog("{#f6d365-fg}ai-team ui{/}");
   await refreshSessions();
-  addLog("Type a task. Use /commands, /command <name>, /sessions, /session <n|new>, /stop or Esc, /provider set <command>, /help, /exit.");
+  addLog("Type a task. Press Ctrl+P for menu in any keyboard layout. Esc stops a running task.");
   updateSide();
   setPrompt();
 }

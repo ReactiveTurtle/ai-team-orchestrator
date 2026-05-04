@@ -72,19 +72,14 @@ The UI shows the chat/event stream, current command, current employee and step, 
 Inside the UI:
 
 ```text
-/commands          list configured commands
-/command review    switch current command
-/default           save current command as UI default for this project
-/sessions          list recent UI sessions
-/session 2         switch to a session by number
-/session new       start a new session
-/stop              stop current running task
-/provider          show configured provider command
-/provider set ...  configure provider command for this project
-/provider clear    clear provider command
-/help              show help
-/exit              exit
+Ctrl+P             open main menu in any keyboard layout
+Esc                stop current running task
+Tab                focus input
 ```
+
+The main menu contains sections for Sessions, Commands, Provider, and Actions. Sessions are selected from a menu; use Enter to open a session, `n` to create a new session, and Esc to close the menu.
+
+Slash commands still work as shortcuts, but the primary UI flow is menu-driven.
 
 Provider settings are stored per project in `.ai-team/settings.json`. `AI_TEAM_OPENCODE_COMMAND` can still be used as a temporary override.
 
