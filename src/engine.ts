@@ -4,20 +4,37 @@ import { createBackends } from "./backends/index.js";
 import { createRunId, createRunStore } from "./state-store.js";
 import type { CommandConfig, EmployeeRunResult, RunState, TeamStepConfig } from "./types.js";
 
+export type RunProgressEvent =
+  | { type: "run_started"; runId: string; team: string; command?: string; task: string }
+  | { type: "step_started"; runId: string; step: string; employee: string; role: string; iteration: number }
+  | { type: "step_completed"; runId: string; step: string; employee: string; role: string; iteration: number; status: EmployeeRunResult["status"]; next?: string }
+  | { type: "run_completed"; runId: string; status: RunState["status"]; statePath: string; artifactsDir: string };
+
 export type RunOptions = {
   command?: CommandConfig;
+  quiet?: boolean;
+  onEvent?: (event: RunProgressEvent) => void;
+  abortSignal?: AbortSignal;
 };
 
-export async function runConfiguredCommand(commandName: string, input: string | undefined, rootDir = process.cwd()): Promise<void> {
+export type RunResult = {
+  runId: string;
+  status: RunState["status"];
+  statePath: string;
+  artifactsDir: string;
+  state: RunState;
+};
+
+export async function runConfiguredCommand(commandName: string, input: string | undefined, rootDir = process.cwd(), options: Omit<RunOptions, "command"> = {}): Promise<RunResult> {
   const config = await loadConfig(rootDir);
   const command = config.commands.get(commandName);
   if (!command) throw new Error(`Command not found: ${commandName}`);
 
   const task = renderCommandTask(command, input);
-  await runTeamCommand(command.team, task, rootDir, { command });
+  return runTeamCommand(command.team, task, rootDir, { ...options, command });
 }
 
-export async function runTeamCommand(teamName: string, task: string, rootDir = process.cwd(), options: RunOptions = {}): Promise<void> {
+export async function runTeamCommand(teamName: string, task: string, rootDir = process.cwd(), options: RunOptions = {}): Promise<RunResult> {
   const config = await loadConfig(rootDir);
   const errors = validateConfig(config);
   if (errors.length > 0) {
@@ -29,7 +46,7 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
 
   const runId = createRunId();
   const store = await createRunStore(config.aiTeamDir, runId);
-  const backends = createBackends();
+  const backends = createBackends(config.settings);
   const maxIterations = team.limits?.max_iterations ?? 5;
 
   const state: RunState = {
@@ -46,8 +63,15 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
 
   await store.saveState(state);
   await store.appendEvent("run_started", { team: team.name, task, command: options.command?.name ?? null });
+  options.onEvent?.({ type: "run_started", runId, team: team.name, command: options.command?.name, task });
 
   while (state.status === "running") {
+    if (options.abortSignal?.aborted) {
+      state.status = "failed";
+      await store.appendEvent("run_failed", { reason: "stopped" });
+      break;
+    }
+
     if (state.iteration >= maxIterations) {
       state.status = "failed";
       await store.appendEvent("run_failed", { reason: "max_iterations_reached", max_iterations: maxIterations });
@@ -56,9 +80,19 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
 
     const step = team.flow.steps[state.current_step];
     if (!step) throw new Error(`Current step is missing: ${state.current_step}`);
+    const employee = config.employees.get(step.employee);
+    if (!employee) throw new Error(`Missing employee: ${step.employee}`);
 
     state.iteration += 1;
     await store.appendEvent("step_started", { step: state.current_step, iteration: state.iteration });
+    options.onEvent?.({
+      type: "step_started",
+      runId,
+      step: state.current_step,
+      employee: employee.name,
+      role: employee.role,
+      iteration: state.iteration
+    });
 
     const result = await runStep(step, state.current_step, task, config, backends, state, options);
     state.last_result = result;
@@ -70,6 +104,16 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
 
     const next = resolveNextStep(step.next, result.status);
     await store.appendEvent("step_completed", { step: state.current_step, result_status: result.status, next: next ?? "done" });
+    options.onEvent?.({
+      type: "step_completed",
+      runId,
+      step: state.current_step,
+      employee: employee.name,
+      role: employee.role,
+      iteration: state.iteration,
+      status: result.status,
+      next: next ?? "done"
+    });
 
     if (!next || next === "done") {
       state.status = result.status === "needs_fix" ? "needs_fix" : "done";
@@ -83,9 +127,23 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
   await store.saveState(state);
   await store.appendEvent("run_completed", { status: state.status });
 
-  console.log(`Run ${state.status}: ${runId}`);
-  console.log(`State: ${join(store.runDir, "state.json")}`);
-  console.log(`Artifacts: ${store.artifactsDir}`);
+  const result: RunResult = {
+    runId,
+    status: state.status,
+    statePath: join(store.runDir, "state.json"),
+    artifactsDir: store.artifactsDir,
+    state
+  };
+
+  if (!options.quiet) {
+    console.log(`Run ${state.status}: ${runId}`);
+    console.log(`State: ${result.statePath}`);
+    console.log(`Artifacts: ${result.artifactsDir}`);
+  }
+
+  options.onEvent?.({ type: "run_completed", runId, status: state.status, statePath: result.statePath, artifactsDir: result.artifactsDir });
+
+  return result;
 }
 
 async function runStep(
@@ -114,7 +172,8 @@ async function runStep(
     rolePrompt,
     employee,
     state,
-    reviewPolicy: config.reviewPolicy
+    reviewPolicy: config.reviewPolicy,
+    abortSignal: options.abortSignal
   });
 }
 
@@ -136,7 +195,15 @@ function resolveNextStep(next: TeamStepConfig["next"], status: EmployeeRunResult
 }
 
 function renderResult(result: EmployeeRunResult): string {
-  return [`# Result`, ``, `Status: ${result.status}`, ``, result.summary, result.artifact ? `\n## Artifact\n\n${result.artifact}` : ""].join("\n");
+  return [
+    `# Result`,
+    ``,
+    `Status: ${result.status}`,
+    result.reasoning_summary ? `\n## Public Reasoning\n\n${result.reasoning_summary}` : "",
+    ``,
+    result.summary,
+    result.artifact ? `\n## Artifact\n\n${result.artifact}` : ""
+  ].join("\n");
 }
 
 function relativeArtifactPath(rootDir: string, artifactPath: string): string {

@@ -1,4 +1,5 @@
 node_modules/
 dist/
 .ai-team/
+.ai-team/sessions/
 *.log

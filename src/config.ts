@@ -1,6 +1,6 @@
 import { basename, dirname, join } from "node:path";
-import type { CommandConfig, EmployeeConfig, LoadedConfig, ReviewPolicyConfig, TeamConfig } from "./types.js";
-import { fileExists, listFiles, readText, readYaml } from "./fs-utils.js";
+import type { CommandConfig, EmployeeConfig, LoadedConfig, ReviewPolicyConfig, SettingsConfig, TeamConfig } from "./types.js";
+import { fileExists, listFiles, readText, readYaml, writeText } from "./fs-utils.js";
 
 export const AI_TEAM_DIR = ".ai-team";
 
@@ -12,6 +12,10 @@ export async function loadConfig(rootDir = process.cwd()): Promise<LoadedConfig>
   const principles = new Map<string, string>();
   const employees = new Map<string, EmployeeConfig>();
   const teams = new Map<string, TeamConfig>();
+  const settingsPath = join(aiTeamDir, "settings.json");
+  const settings = fileExists(settingsPath)
+    ? JSON.parse(await readText(settingsPath)) as SettingsConfig
+    : {};
 
   for (const file of await listFiles(join(aiTeamDir, "commands"), ".yaml")) {
     const command = await readYaml<CommandConfig>(file);
@@ -41,7 +45,14 @@ export async function loadConfig(rootDir = process.cwd()): Promise<LoadedConfig>
     ? await readYaml<ReviewPolicyConfig>(reviewPolicyPath)
     : undefined;
 
-  return { rootDir, aiTeamDir, commands, roles, principles, employees, teams, reviewPolicy };
+  return { rootDir, aiTeamDir, commands, roles, principles, employees, teams, settings, reviewPolicy };
+}
+
+export async function saveSettings(settings: SettingsConfig, rootDir = process.cwd()): Promise<string> {
+  const workspaceRoot = findWorkspaceRoot(rootDir);
+  const settingsPath = join(workspaceRoot, AI_TEAM_DIR, "settings.json");
+  await writeText(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  return settingsPath;
 }
 
 export function findWorkspaceRoot(startDir = process.cwd()): string {

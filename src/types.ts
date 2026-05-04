@@ -40,6 +40,15 @@ export type ReviewPolicyConfig = {
   levels?: Record<string, { focus: string[] }>;
 };
 
+export type SettingsConfig = {
+  provider?: {
+    command?: string;
+  };
+  ui?: {
+    defaultCommand?: string;
+  };
+};
+
 export type LoadedConfig = {
   rootDir: string;
   aiTeamDir: string;
@@ -48,6 +57,7 @@ export type LoadedConfig = {
   teams: Map<string, TeamConfig>;
   roles: Map<string, string>;
   principles: Map<string, string>;
+  settings: SettingsConfig;
   reviewPolicy?: ReviewPolicyConfig;
 };
 
@@ -80,10 +90,12 @@ export type EmployeeRunInput = {
   employee: EmployeeConfig;
   state: RunState;
   reviewPolicy?: ReviewPolicyConfig;
+  abortSignal?: AbortSignal;
 };
 
 export type EmployeeRunResult = {
   status: "approved" | "needs_fix" | "done";
+  reasoning_summary?: string;
   summary: string;
   findings?: Finding[];
   decisions?: string[];

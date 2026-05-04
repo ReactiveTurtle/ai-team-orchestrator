@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 import { initCommand } from "./commands/init.js";
 import { validateCommand } from "./commands/validate.js";
+import { consoleCommand } from "./commands/console.js";
+import { uiCommand } from "./commands/ui.js";
+import { providerCommand } from "./commands/provider.js";
 import { runConfiguredCommand, runTeamCommand } from "./engine.js";
 
 async function main(argv: string[]): Promise<void> {
   const [command, ...args] = argv;
 
-  if (!command || command === "help" || command === "--help" || command === "-h") {
+  if (!command) {
+    await uiCommand();
+    return;
+  }
+
+  if (command === "help" || command === "--help" || command === "-h") {
     printHelp();
     return;
   }
@@ -18,6 +26,11 @@ async function main(argv: string[]): Promise<void> {
 
   if (command === "validate") {
     await validateCommand();
+    return;
+  }
+
+  if (command === "provider") {
+    await providerCommand(args);
     return;
   }
 
@@ -40,6 +53,16 @@ async function main(argv: string[]): Promise<void> {
       throw new Error("Usage: ai-team run-command <command> --input \"...\"");
     }
     await runConfiguredCommand(commandName, input);
+    return;
+  }
+
+  if (command === "console" || command === "chat") {
+    await consoleCommand(args[0] ?? "feature");
+    return;
+  }
+
+  if (command === "ui" || command === "tui") {
+    await uiCommand(args[0] ?? "feature");
     return;
   }
 
@@ -66,7 +89,7 @@ function readPositionalTask(args: string[]): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`ai-team\n\nUsage:\n  ai-team init\n  ai-team validate\n  ai-team run <team> --task "..."\n  ai-team run <team> <task>\n  ai-team run-command <command> --input "..."\n\nEnvironment:\n  AI_TEAM_OPENCODE_COMMAND  Optional command used as OpenCode execution backend. Prompt is passed via stdin.\n`);
+  console.log(`ai-team\n\nUsage:\n  ai-team                         Open terminal UI\n  ai-team ui [command]\n  ai-team console [command]       Open plain text console\n  ai-team provider [get|set|clear]\n  ai-team init\n  ai-team validate\n  ai-team run <team> --task "..."\n  ai-team run <team> <task>\n  ai-team run-command <command> --input "..."\n\nEnvironment:\n  AI_TEAM_OPENCODE_COMMAND  Optional command override. Project provider.command is stored in .ai-team/settings.json.\n`);
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

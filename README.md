@@ -9,8 +9,11 @@ npm install
 npm run build
 npm start -- init
 npm start -- validate
+npm start
+npm start -- ui feature
 npm start -- run feature-team "Add rate limit to login endpoint"
 npm start -- run-command feature "Add rate limit to login endpoint"
+npm start -- console feature
 ```
 
 By default runs use dry-run mode. To connect an executor, set:
@@ -37,7 +40,11 @@ Then in any target project:
 cd path/to/your-project
 ai-team init
 ai-team validate
+ai-team
+ai-team ui feature
+ai-team provider set "opencode run"
 ai-team run-command feature "Add rate limit to login endpoint"
+ai-team console feature
 ```
 
 Each project owns its own `.ai-team` directory. That directory contains project-specific commands, principles, roles, employees, teams and policies.
@@ -45,6 +52,66 @@ Each project owns its own `.ai-team` directory. That directory contains project-
 The `ai-team` binary is global, but configuration is local to the current project.
 
 You can run commands from nested folders. The CLI searches for the nearest `.ai-team` directory by walking upward from the current directory.
+
+## Console Mode
+
+Use terminal UI mode for a pane-based interactive interface. This is the default when running `ai-team` without arguments:
+
+```bash
+ai-team
+```
+
+or start with a specific command:
+
+```bash
+ai-team ui feature
+```
+
+The UI shows the chat/event stream, current command, current employee and step, configured commands, team flow, last run, and transcript path.
+
+Inside the UI:
+
+```text
+/commands          list configured commands
+/command review    switch current command
+/default           save current command as UI default for this project
+/sessions          list recent UI sessions
+/session 2         switch to a session by number
+/session new       start a new session
+/stop              stop current running task
+/provider          show configured provider command
+/provider set ...  configure provider command for this project
+/provider clear    clear provider command
+/help              show help
+/exit              exit
+```
+
+Provider settings are stored per project in `.ai-team/settings.json`. `AI_TEAM_OPENCODE_COMMAND` can still be used as a temporary override.
+
+Use plain text console mode for a simpler chat-like workflow:
+
+```bash
+ai-team console
+```
+
+or start with a specific command:
+
+```bash
+ai-team console feature
+```
+
+Inside the console:
+
+```text
+/commands          list configured commands
+/command review    switch current command
+/status            show current console status
+/last              show last run result again
+/help              show console help
+/exit              exit
+```
+
+Any other input is sent to the current configured command. Each message creates a new run, prints the assistant summary in the terminal, and stores transcript/state/artifacts under `.ai-team`.
 
 For package-based usage without linking:
 
