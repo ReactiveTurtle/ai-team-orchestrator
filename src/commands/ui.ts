@@ -118,12 +118,25 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     }
   });
 
+  blessed.box({
+    parent: screen,
+    bottom: 4,
+    left: 4,
+    width: "72%",
+    height: 1,
+    content: "message",
+    style: {
+      bg: "#242833",
+      fg: "#9ca3af"
+    }
+  });
+
   const inputPrompt = blessed.box({
     parent: screen,
     bottom: 2,
     left: 4,
     width: 20,
-    height: 1,
+    height: 2,
     tags: true,
     content: `${command}>`,
     style: {
@@ -137,7 +150,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     bottom: 2,
     left: 24,
     width: "52%",
-    height: 1,
+    height: 2,
     inputOnFocus: true,
     tags: true,
     style: {
@@ -319,6 +332,8 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
   }
 
   function openMenu(label: string, items: string[], onSelect: (index: number) => void, extraKeys: Record<string, () => void> = {}): void {
+    input.cancel();
+
     const menu = blessed.list({
       parent: screen,
       top: "center",
@@ -342,12 +357,27 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
 
     const close = (): void => {
       menu.detach();
-      input.focus();
-      input.readInput();
+      setPrompt();
       screen.render();
     };
 
+    let selectedIndex = 0;
+
     menu.key(["escape", "q"], close);
+    menu.key(["up", "k"], () => {
+      selectedIndex = Math.max(0, selectedIndex - 1);
+      menu.up(1);
+      screen.render();
+    });
+    menu.key(["down", "j"], () => {
+      selectedIndex = Math.min(items.length - 1, selectedIndex + 1);
+      menu.down(1);
+      screen.render();
+    });
+    menu.key(["enter", "return"], () => {
+      close();
+      onSelect(selectedIndex);
+    });
     for (const [key, handler] of Object.entries(extraKeys)) {
       menu.key([key], () => {
         close();
@@ -445,12 +475,10 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     }
     if (text === "/commands") {
       openCommandMenu();
-      setPrompt();
       return;
     }
     if (text === "/sessions") {
       await openSessionMenu();
-      setPrompt();
       return;
     }
     if (text.startsWith("/session ")) {
