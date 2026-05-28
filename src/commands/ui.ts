@@ -50,6 +50,15 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     title: "ai-team"
   });
 
+  blessed.box({
+    parent: screen,
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    style: { bg: "#202124" }
+  });
+
   const log = blessed.log({
     parent: screen,
     top: 0,
@@ -66,7 +75,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
       border: { fg: "#4a5568" },
       label: { fg: "#f6d365", bold: true },
       fg: "#e5e7eb",
-      bg: "#111318"
+      bg: "#242528"
     }
   });
 
@@ -83,7 +92,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
       border: { fg: "#4a5568" },
       label: { fg: "#d6bcfa", bold: true },
       fg: "#d1d5db",
-      bg: "#101217"
+      bg: "#242528"
     }
   });
 
@@ -102,7 +111,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     left: 1,
     width: "77%",
     height: "12%",
-    style: { bg: "#242833" }
+    style: { bg: "#303136" }
   });
 
   blessed.box({
@@ -113,7 +122,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     height: "12%",
     border: "line",
     style: {
-      bg: "#242833",
+      bg: "#303136",
       border: { fg: "#6b7280" }
     }
   });
@@ -126,7 +135,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     height: 1,
     content: "message",
     style: {
-      bg: "#242833",
+      bg: "#303136",
       fg: "#9ca3af"
     }
   });
@@ -140,7 +149,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     tags: true,
     content: `${command}>`,
     style: {
-      bg: "#242833",
+      bg: "#303136",
       fg: "#ddd6fe"
     }
   });
@@ -154,7 +163,7 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
     inputOnFocus: true,
     tags: true,
     style: {
-      bg: "#242833",
+      bg: "#303136",
       fg: "#f8fafc"
     }
   });
@@ -334,7 +343,8 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
   function openMenu(label: string, items: string[], onSelect: (index: number) => void, extraKeys: Record<string, () => void> = {}): void {
     input.cancel();
 
-    const menu = blessed.list({
+    let selectedIndex = 0;
+    const menu = blessed.box({
       parent: screen,
       top: "center",
       left: "center",
@@ -342,55 +352,71 @@ export async function uiCommand(defaultCommand?: string, rootDir = process.cwd()
       height: Math.min(Math.max(items.length + 4, 10), 24),
       border: "line",
       label: ` ${label} `,
-      keys: true,
-      mouse: true,
-      vi: true,
       tags: true,
-      items,
+      scrollable: true,
       style: {
-        bg: "#181a22",
+        bg: "#2b2c31",
         fg: "#e5e7eb",
-        border: { fg: "#8b7aa8" },
-        selected: { bg: "#4a4258", fg: "#f8fafc" }
+        border: { fg: "#8b8498" },
+        label: { fg: "#ddd6fe" }
       }
     });
 
+    const renderMenu = (): void => {
+      menu.setContent(items.map((item, index) => {
+        const prefix = index === selectedIndex ? "{#ddd6fe-fg}›{/} " : "  ";
+        const content = index === selectedIndex ? `{#f5f5f4-fg}${item}{/}` : `{#cbd5e1-fg}${item}{/}`;
+        return `${prefix}${content}`;
+      }).join("\n"));
+      screen.render();
+    };
+
     const close = (): void => {
+      removeKeys(["up", "k"], upHandler);
+      removeKeys(["down", "j"], downHandler);
+      removeKeys(["enter", "return"], enterHandler);
+      removeKeys(["escape", "q"], closeHandler);
+      for (const [key, handler] of extraHandlers) screen.removeKey(key, handler);
       menu.detach();
       setPrompt();
       screen.render();
     };
 
-    let selectedIndex = 0;
-
-    menu.key(["escape", "q"], close);
-    menu.key(["up", "k"], () => {
+    const closeHandler = (): void => close();
+    const upHandler = (): void => {
       selectedIndex = Math.max(0, selectedIndex - 1);
-      menu.up(1);
-      screen.render();
-    });
-    menu.key(["down", "j"], () => {
+      renderMenu();
+    };
+    const downHandler = (): void => {
       selectedIndex = Math.min(items.length - 1, selectedIndex + 1);
-      menu.down(1);
-      screen.render();
-    });
-    menu.key(["enter", "return"], () => {
+      renderMenu();
+    };
+    const enterHandler = (): void => {
       close();
       onSelect(selectedIndex);
-    });
+    };
+
+    screen.key(["escape", "q"], closeHandler);
+    screen.key(["up", "k"], upHandler);
+    screen.key(["down", "j"], downHandler);
+    screen.key(["enter", "return"], enterHandler);
+
+    const extraHandlers: Array<[string, () => void]> = [];
     for (const [key, handler] of Object.entries(extraKeys)) {
-      menu.key([key], () => {
+      const wrapped = (): void => {
         close();
         handler();
-      });
+      };
+      extraHandlers.push([key, wrapped]);
+      screen.key([key], wrapped);
     }
-    menu.on("select", (_item, index) => {
-      close();
-      onSelect(index);
-    });
 
     menu.focus();
-    screen.render();
+    renderMenu();
+  }
+
+  function removeKeys(keys: string[], handler: () => void): void {
+    for (const key of keys) screen.removeKey(key, handler);
   }
 
   function stopCurrentRun(): void {
