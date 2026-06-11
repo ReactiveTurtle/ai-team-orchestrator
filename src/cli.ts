@@ -5,12 +5,13 @@ import { consoleCommand } from "./commands/console.js";
 import { uiCommand } from "./commands/ui.js";
 import { providerCommand } from "./commands/provider.js";
 import { runConfiguredCommand, runTeamCommand } from "./engine.js";
+import { startServer } from "./server/server.js";
 
 async function main(argv: string[]): Promise<void> {
   const [command, ...args] = argv;
 
   if (!command) {
-    await uiCommand();
+    await startServer();
     return;
   }
 
@@ -61,7 +62,12 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  if (command === "ui" || command === "tui") {
+  if (command === "server" || command === "web" || command === "ui") {
+    await startServer({ open: command !== "server" });
+    return;
+  }
+
+  if (command === "tui") {
     await uiCommand(args[0] ?? "feature");
     return;
   }
@@ -89,7 +95,7 @@ function readPositionalTask(args: string[]): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`ai-team\n\nUsage:\n  ai-team                         Open terminal UI\n  ai-team ui [command]\n  ai-team console [command]       Open plain text console\n  ai-team provider [get|set|clear]\n  ai-team init\n  ai-team validate\n  ai-team run <team> --task "..."\n  ai-team run <team> <task>\n  ai-team run-command <command> --input "..."\n\nEnvironment:\n  AI_TEAM_OPENCODE_COMMAND  Optional command override. Project provider.command is stored in .ai-team/settings.json.\n`);
+  console.log(`ai-team\n\nUsage:\n  ai-team                         Open web UI\n  ai-team web|ui                  Open web UI\n  ai-team server                  Start web server without opening browser\n  ai-team tui [command]           Open legacy terminal UI\n  ai-team console [command]       Open plain text console\n  ai-team provider [get|set|clear]\n  ai-team init\n  ai-team validate\n  ai-team run <team> --task "..."\n  ai-team run <team> <task>\n  ai-team run-command <command> --input "..."\n\nEnvironment:\n  AI_TEAM_OPENCODE_COMMAND  Optional command override. Project provider.command is stored in .ai-team/settings.json.\n`);
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {

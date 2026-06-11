@@ -7,7 +7,7 @@ import type { CommandConfig, EmployeeRunResult, RunState, TeamStepConfig } from 
 export type RunProgressEvent =
   | { type: "run_started"; runId: string; team: string; command?: string; task: string }
   | { type: "step_started"; runId: string; step: string; employee: string; role: string; iteration: number }
-  | { type: "step_completed"; runId: string; step: string; employee: string; role: string; iteration: number; status: EmployeeRunResult["status"]; next?: string }
+  | { type: "step_completed"; runId: string; step: string; employee: string; role: string; iteration: number; status: EmployeeRunResult["status"]; next?: string; summary: string; reasoning?: string; artifact?: string }
   | { type: "run_completed"; runId: string; status: RunState["status"]; statePath: string; artifactsDir: string };
 
 export type RunOptions = {
@@ -90,7 +90,7 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
       runId,
       step: state.current_step,
       employee: employee.name,
-      role: employee.role,
+      role: step.role ?? employee.role,
       iteration: state.iteration
     });
 
@@ -109,10 +109,13 @@ export async function runTeamCommand(teamName: string, task: string, rootDir = p
       runId,
       step: state.current_step,
       employee: employee.name,
-      role: employee.role,
+      role: step.role ?? employee.role,
       iteration: state.iteration,
       status: result.status,
-      next: next ?? "done"
+      next: next ?? "done",
+      summary: result.summary,
+      reasoning: result.reasoning_summary,
+      artifact: result.artifact
     });
 
     if (!next || next === "done") {
@@ -157,8 +160,9 @@ async function runStep(
 ): Promise<EmployeeRunResult> {
   const employee = config.employees.get(step.employee);
   if (!employee) throw new Error(`Missing employee: ${step.employee}`);
-  const rolePrompt = config.roles.get(employee.role);
-  if (!rolePrompt) throw new Error(`Missing role: ${employee.role}`);
+  const roleName = step.role ?? employee.role;
+  const rolePrompt = config.roles.get(roleName);
+  if (!rolePrompt) throw new Error(`Missing role: ${roleName}`);
   const backendName = employee.backend ?? "opencode";
   const backend = backends.get(backendName);
   if (!backend) throw new Error(`Missing backend: ${backendName}`);
@@ -170,7 +174,7 @@ async function runStep(
     command: options.command,
     principles: config.principles,
     rolePrompt,
-    employee,
+    employee: { ...employee, role: roleName },
     state,
     reviewPolicy: config.reviewPolicy,
     abortSignal: options.abortSignal

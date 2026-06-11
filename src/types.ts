@@ -3,6 +3,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type EmployeeConfig = {
   name: string;
   role: string;
+  roles?: string[];
   backend?: string;
   model?: string;
   extra_instructions?: string;
@@ -19,6 +20,7 @@ export type CommandConfig = {
 
 export type TeamStepConfig = {
   employee: string;
+  role?: string;
   review_level?: number;
   next?: string | Record<string, string>;
 };

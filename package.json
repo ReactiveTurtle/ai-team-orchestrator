@@ -7,7 +7,9 @@
     "ai-team": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p tsconfig.json",
+    "build:web": "node_modules\\node\\bin\\node.exe node_modules\\@angular\\cli\\bin\\ng build ai-team-web",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "prepack": "npm run build"
@@ -18,13 +20,25 @@
     "package.json"
   ],
   "dependencies": {
+    "@angular/animations": "^22.0.0",
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
     "blessed": "^0.1.81",
-    "yaml": "^2.8.1"
+    "rxjs": "^7.8.2",
+    "yaml": "^2.8.1",
+    "zone.js": "^0.16.2"
   },
   "devDependencies": {
+    "@angular/build": "^22.0.0",
+    "@angular/cli": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
     "@types/blessed": "^0.1.27",
     "@types/node": "^22.15.3",
+    "node": "^24.15.0",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^6.0.0-dev.20260416"
   }
 }

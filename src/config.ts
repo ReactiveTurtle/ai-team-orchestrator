@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 import type { CommandConfig, EmployeeConfig, LoadedConfig, ReviewPolicyConfig, SettingsConfig, TeamConfig } from "./types.js";
 import { fileExists, listFiles, readText, readYaml, writeText } from "./fs-utils.js";
+import { readGlobalCommandProfiles } from "./global-commands.js";
 
 export const AI_TEAM_DIR = ".ai-team";
 
@@ -44,6 +45,13 @@ export async function loadConfig(rootDir = process.cwd()): Promise<LoadedConfig>
   const reviewPolicy = fileExists(reviewPolicyPath)
     ? await readYaml<ReviewPolicyConfig>(reviewPolicyPath)
     : undefined;
+
+  for (const profile of await readGlobalCommandProfiles()) {
+    commands.set(profile.command.name, profile.command);
+    teams.set(profile.team.name, profile.team);
+    for (const employee of profile.employees) employees.set(employee.name, employee);
+    for (const [roleName, rolePrompt] of Object.entries(profile.roles)) roles.set(roleName, rolePrompt);
+  }
 
   return { rootDir, aiTeamDir, commands, roles, principles, employees, teams, settings, reviewPolicy };
 }
@@ -94,6 +102,9 @@ export function validateConfig(config: LoadedConfig): string[] {
     if (employee.role && !config.roles.has(employee.role)) {
       errors.push(`Employee ${employee.name} references missing role ${employee.role}`);
     }
+    for (const role of employee.roles ?? []) {
+      if (!config.roles.has(role)) errors.push(`Employee ${employee.name} references missing role ${role}`);
+    }
   }
 
   for (const team of config.teams.values()) {
@@ -112,6 +123,9 @@ export function validateConfig(config: LoadedConfig): string[] {
     for (const [stepName, step] of Object.entries(team.flow.steps)) {
       if (!config.employees.has(step.employee)) {
         errors.push(`Team ${team.name} step ${stepName} references missing employee ${step.employee}`);
+      }
+      if (step.role && !config.roles.has(step.role)) {
+        errors.push(`Team ${team.name} step ${stepName} references missing role ${step.role}`);
       }
       for (const next of nextStepNames(step.next)) {
         if (next !== "done" && !team.flow.steps[next]) {

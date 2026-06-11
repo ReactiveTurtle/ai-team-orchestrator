@@ -1,6 +1,6 @@
 # ai-team-orchestrator
 
-Configurable CLI foundation for orchestrating AI development teams.
+Configurable local Angular web application and CLI foundation for orchestrating AI development teams.
 
 ## Quick Start
 
@@ -10,7 +10,8 @@ npm run build
 npm start -- init
 npm start -- validate
 npm start
-npm start -- ui feature
+npm start -- server
+npm start -- tui feature
 npm start -- run feature-team "Add rate limit to login endpoint"
 npm start -- run-command feature "Add rate limit to login endpoint"
 npm start -- console feature
@@ -41,7 +42,7 @@ cd path/to/your-project
 ai-team init
 ai-team validate
 ai-team
-ai-team ui feature
+ai-team server
 ai-team provider set "opencode run"
 ai-team run-command feature "Add rate limit to login endpoint"
 ai-team console feature
@@ -53,35 +54,44 @@ The `ai-team` binary is global, but configuration is local to the current projec
 
 You can run commands from nested folders. The CLI searches for the nearest `.ai-team` directory by walking upward from the current directory.
 
-## Console Mode
+## Web UI
 
-Use terminal UI mode for a pane-based interactive interface. This is the default when running `ai-team` without arguments:
+Use the local web UI for the interactive workflow. This is the default when running `ai-team` without arguments:
 
 ```bash
 ai-team
 ```
 
-or start with a specific command:
+Start the server without opening a browser:
 
 ```bash
-ai-team ui feature
+ai-team server
 ```
 
-The UI shows the chat/event stream, current command, current employee and step, configured commands, team flow, last run, and transcript path.
+The Angular web UI starts on a separate project selection page. Projects are shown as cards, can be added by path, opened, refreshed, or removed from the ai-team list.
+
+Inside a selected project, the UI shows the chat/event stream, selected command, current employee and step, configured flow, provider settings, tasks, live progress, public reasoning, and last run status.
 
 Inside the UI:
 
 ```text
 Ctrl+P             open main menu in any keyboard layout
-Esc                stop current running task
-Tab                focus input
+Esc                close menu or stop current running task
 ```
 
-The main menu contains sections for Sessions, Commands, Provider, and Actions. Sessions are selected from a menu; use Enter to open a session, `n` to create a new session, and Esc to close the menu.
+The main menu contains sections for Projects, Tasks, Commands, Provider, and Actions. Tasks open in a separate task list overlay. Switching projects or tasks does not stop a running process; only the explicit stop action interrupts provider execution.
 
-Slash commands still work as shortcuts, but the primary UI flow is menu-driven.
+Projects are managed in the browser. Add a project by path from the project cards page, open a registered project, and remove projects from the list without deleting files from disk. A project must contain `.ai-team`, or the path must be inside a directory tree that contains `.ai-team`.
 
 Provider settings are stored per project in `.ai-team/settings.json`. `AI_TEAM_OPENCODE_COMMAND` can still be used as a temporary override.
+
+## Terminal And Console Modes
+
+Use the legacy terminal UI if you need a terminal-only interface:
+
+```bash
+ai-team tui feature
+```
 
 Use plain text console mode for a simpler chat-like workflow:
 
@@ -137,6 +147,8 @@ npm install -g path/to/ai-team-orchestrator
   teams/        configurable flows
   policies/     general quality policies
   runs/         generated runtime state and artifacts
+  sessions/     task transcripts
+  settings.json project-local provider/UI settings
 ```
 
 The orchestrator should not contain project-specific architecture knowledge. It only assembles these layers and controls the flow.
