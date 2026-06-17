@@ -1,86 +1,27 @@
 import { CommonModule } from "@angular/common";
 import { HttpClient } from "@angular/common/http";
-import { Component, ElementRef, ViewChild, computed, inject, signal } from "@angular/core";
-import { FormsModule } from "@angular/forms";
-
-type ProjectEntry = {
-  id: string;
-  name: string;
-  path: string;
-  createdAt: string;
-  lastOpenedAt: string;
-};
-
-type ProjectRegistry = {
-  activeProjectId?: string;
-  projects: ProjectEntry[];
-};
-
-type CommandConfig = {
-  name: string;
-  team: string;
-  description?: string;
-  task?: string;
-  task_template?: string;
-};
-
-type TeamConfig = {
-  name: string;
-  members?: string[];
-  flow: {
-    start: string;
-    steps: Record<string, { employee: string; role?: string; next?: string }>;
-  };
-};
-
-type EmployeeConfig = {
-  name: string;
-  role: string;
-  roles?: string[];
-  backend?: string;
-  model?: string;
-  extra_instructions?: string;
-};
-
-type RoleDraft = { name: string; prompt: string };
-type EmployeeDraft = { name: string; rolesText: string; backend?: string; model?: string; extra_instructions?: string };
-type PipelineStepDraft = { name: string; employee: string; role: string };
-
-type AppConfig = {
-  commands: CommandConfig[];
-  teams: TeamConfig[];
-  employees: EmployeeConfig[];
-  roles: Record<string, string>;
-  settings?: {
-    provider?: { command?: string };
-    ui?: { defaultCommand?: string };
-  };
-  git?: { branch?: string };
-};
-
-type TaskEntry = { id: string; mtime: number };
-type TaskMessage = { role?: string; kind?: string; content?: string; step?: string; employee?: string; status?: string; reasoning?: string };
-type TaskPage = { messages: TaskMessage[]; total: number; offset: number; hasMoreBefore: boolean };
-type TimelineMessage = { role: string; content: string; kind: string };
-type ProviderEvent =
-  | { type: "reasoning"; text: string }
-  | { type: "text"; text: string }
-  | { type: "tool"; tool?: string; status?: string; title?: string; output?: string }
-  | { type: "step"; status: "start" | "finish"; reason?: string };
+import { Component, ViewChild, computed, inject, signal } from "@angular/core";
+import { CommandListComponent } from "./components/command-list/command-list.component";
+import { PaletteComponent } from "./components/palette/palette.component";
+import { CommandEditorPage } from "./pages/command-editor/command-editor.page";
+import { ProjectsPage } from "./pages/projects/projects.page";
+import { TasksPage } from "./pages/tasks/tasks.page";
+import { WorkspacePage } from "./pages/workspace/workspace.page";
+import type { AppConfig, CommandConfig, EditorItem, EmployeeConfig, EmployeeDraft, PipelineStepDraft, ProjectEntry, ProjectRegistry, ProviderEvent, RoleDraft, Screen, TaskMessage, TaskPage, TaskEntry, TeamConfig, TimelineMessage } from "./shared/models/app.models";
 
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, ProjectsPage, TasksPage, WorkspacePage, CommandEditorPage, PaletteComponent, CommandListComponent],
   templateUrl: "./app.component.html"
 })
 export class AppComponent {
   private readonly http = inject(HttpClient);
   private readonly chatPageSize = 50;
 
-  @ViewChild("timelineContainer") private timelineContainer?: ElementRef<HTMLElement>;
+  @ViewChild(WorkspacePage) private workspacePage?: WorkspacePage;
 
-  readonly screen = signal<"projects" | "workspace" | "command-editor">("projects");
+  readonly screen = signal<Screen>("projects");
   readonly projects = signal<ProjectEntry[]>([]);
   readonly activeProjectId = signal<string | undefined>(undefined);
   readonly config = signal<AppConfig | undefined>(undefined);
@@ -109,7 +50,6 @@ export class AppComponent {
   readonly busy = signal(false);
   readonly addFormOpen = signal(false);
   readonly paletteOpen = signal(false);
-  readonly taskListOpen = signal(false);
   readonly commandEditorOpen = signal(false);
   readonly commandListOpen = signal(false);
   readonly selectedPipelineStepIndex = signal(0);
@@ -129,6 +69,7 @@ export class AppComponent {
   commandDraftSteps: PipelineStepDraft[] = [];
 
   readonly activeProject = computed(() => this.projects().find((project) => project.id === this.activeProjectId()));
+  readonly activeTask = computed(() => this.tasks().find((task) => task.id === this.taskId()));
   readonly selectedTeam = computed(() => {
     const config = this.config();
     const teamName = config?.commands.find((command) => command.name === this.command())?.team;
@@ -169,6 +110,8 @@ export class AppComponent {
   readonly selectedRole = computed(() => this.selectedEditorItem().type === "role" ? this.commandDraftRoles[this.selectedEditorItem().index ?? -1] : undefined);
   readonly selectedEmployee = computed(() => this.selectedEditorItem().type === "employee" ? this.commandDraftEmployees[this.selectedEditorItem().index ?? -1] : undefined);
   readonly selectedStep = computed(() => this.selectedEditorItem().type === "step" ? this.commandDraftSteps[this.selectedEditorItem().index ?? -1] : undefined);
+  readonly commandEmployeeCount = (command: CommandConfig): number => this.commandEmployees(command).length;
+  readonly commandStepCount = (command: CommandConfig): number => this.commandSteps(command).length;
   readonly elapsedLabel = computed(() => {
     const startedAt = this.runStartedAt();
     if (!startedAt) return "-";
@@ -187,8 +130,7 @@ export class AppComponent {
         this.paletteOpen.update((value) => !value);
       }
       if (event.key === "Escape") {
-        if (this.taskListOpen()) this.taskListOpen.set(false);
-        else if (this.paletteOpen()) this.paletteOpen.set(false);
+        if (this.paletteOpen()) this.paletteOpen.set(false);
         else void this.stopRun();
       }
     });
@@ -262,14 +204,12 @@ export class AppComponent {
       const registry = await this.post<ProjectRegistry>(`/api/projects/${encodeURIComponent(project.id)}/select`, {});
       this.projects.set(registry.projects ?? []);
       this.activeProjectId.set(registry.activeProjectId);
-      await this.loadWorkspace();
-      this.screen.set("workspace");
-      this.taskListOpen.set(true);
-      this.scrollTimelineToBottom();
+      await this.loadWorkspace(false);
+      this.screen.set("tasks");
     });
   }
 
-  async loadWorkspace(): Promise<void> {
+  async loadWorkspace(loadLatestTask = true): Promise<void> {
     const config = await this.get<AppConfig>("/api/config");
     this.config.set(config);
     this.command.set(config.settings?.ui?.defaultCommand ?? config.commands[0]?.name);
@@ -286,6 +226,7 @@ export class AppComponent {
       this.providerResult.set("");
     }
     await this.refreshTasks();
+    if (!loadLatestTask) return;
     const latestTask = this.tasks()[0];
     if (latestTask) await this.loadTask(latestTask.id);
     else await this.newTask();
@@ -294,7 +235,7 @@ export class AppComponent {
   async newTask(): Promise<void> {
     await this.request(async () => {
       const data = await this.post<{ session: { id: string } }>("/api/sessions", {});
-      await this.loadTask(data.session.id);
+      await this.loadTask(data.session.id, true);
     });
   }
 
@@ -303,7 +244,7 @@ export class AppComponent {
     this.tasks.set(data.sessions ?? []);
   }
 
-  async loadTask(id: string): Promise<void> {
+  async loadTask(id: string, openChat = true): Promise<void> {
     await this.request(async () => {
       const data = await this.get<TaskPage>(`/api/sessions/${encodeURIComponent(id)}?limit=${this.chatPageSize}`);
       this.taskId.set(id);
@@ -316,17 +257,22 @@ export class AppComponent {
       })));
       if (this.timeline().length === 0) this.chatEmptyText.set("Опишите, что нужно сделать. Команда начнёт работу после отправки.");
       await this.refreshTasks();
-      this.taskListOpen.set(false);
+      if (openChat) this.screen.set("workspace");
       this.scrollTimelineToBottom();
     });
   }
 
+  openTasksPage(): void {
+    this.paletteOpen.set(false);
+    this.screen.set("tasks");
+    void this.refreshTasks();
+  }
+
   async onTimelineScroll(): Promise<void> {
-    const element = this.timelineContainer?.nativeElement;
     const id = this.taskId();
-    if (!element || !id || element.scrollTop > 48 || !this.hasOlderMessages() || this.loadingOlderMessages()) return;
+    if (!id || !this.hasOlderMessages() || this.loadingOlderMessages()) return;
     this.loadingOlderMessages.set(true);
-    const previousHeight = element.scrollHeight;
+    const previousHeight = this.workspacePage?.scrollHeight() ?? 0;
     try {
       const limit = Math.min(this.chatPageSize, this.timelineOffset);
       const offset = Math.max(0, this.timelineOffset - limit);
@@ -339,10 +285,7 @@ export class AppComponent {
       this.timelineOffset = data.offset;
       this.hasOlderMessages.set(data.hasMoreBefore);
       this.timeline.set([...older, ...this.timeline()]);
-      window.requestAnimationFrame(() => {
-        const current = this.timelineContainer?.nativeElement;
-        if (current) current.scrollTop = current.scrollHeight - previousHeight;
-      });
+      this.workspacePage?.preserveTimelineOffset(previousHeight);
     } finally {
       this.loadingOlderMessages.set(false);
     }
@@ -408,7 +351,6 @@ export class AppComponent {
 
   backToProjects(): void {
     this.paletteOpen.set(false);
-    this.taskListOpen.set(false);
     this.screen.set("projects");
   }
 
@@ -426,15 +368,15 @@ export class AppComponent {
 
   private async openTaskListForCommand(): Promise<void> {
     await this.refreshTasks();
-    this.taskListOpen.set(true);
+    this.screen.set("tasks");
   }
 
   newCommand(): void {
     this.commandOriginalName = "";
-    this.commandDraft = { name: "", team: "", description: "", task_template: "{{input}}" };
-    this.commandDraftRoles = [{ name: "builder", prompt: "Опишите обязанности роли." }];
-    this.commandDraftEmployees = [{ name: "employee-1", rolesText: "builder", backend: "opencode", model: "gpt-5.5" }];
-    this.commandDraftSteps = [{ name: "work", employee: "employee-1", role: "builder" }];
+    this.commandDraft = { name: "Новая команда", team: "", description: "Опишите назначение команды.", task_template: "{{input}}" };
+    this.commandDraftRoles = [{ name: "исполнитель", prompt: "Опишите обязанности роли." }];
+    this.commandDraftEmployees = [{ name: "сотрудник 1", rolesText: "исполнитель", backend: "opencode", model: "gpt-5.5" }];
+    this.commandDraftSteps = [{ name: "работа", employee: "сотрудник 1", role: "исполнитель" }];
     this.selectedPipelineStepIndex.set(0);
     this.selectedEditorItem.set({ type: "command" });
     this.commandListOpen.set(false);
@@ -602,7 +544,7 @@ export class AppComponent {
 
   async saveCommand(): Promise<void> {
     await this.request(async () => {
-      const teamName = `${this.commandDraft.name}-team`;
+      const teamName = `${commandSlug(this.commandDraft.name)}-team`;
       const steps = Object.fromEntries(this.commandDraftSteps.map((step, index) => [step.name, {
         employee: step.employee,
         role: step.role,
@@ -738,12 +680,7 @@ export class AppComponent {
   }
 
   private scrollTimelineToBottom(): void {
-    const scroll = (): void => {
-      const element = this.timelineContainer?.nativeElement;
-      if (element) element.scrollTop = element.scrollHeight;
-    };
-    window.requestAnimationFrame(scroll);
-    window.setTimeout(scroll, 80);
+    this.workspacePage?.scrollToBottom();
   }
 
   private async request<T>(callback: () => Promise<T>): Promise<T | undefined> {
@@ -811,4 +748,13 @@ function timelineKind(message: TaskMessage): string {
   if (message.role === "assistant") return "assistant";
   if (message.role === "user") return "user";
   return "event";
+}
+
+function commandSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "") || "команда";
 }

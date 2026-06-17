@@ -1,0 +1,93 @@
+<section class="screen active">
+  <div class="graph-editor-page">
+    <header class="graph-editor-topbar">
+      <app-button (pressed)="closeEditor.emit()">← Команды</app-button>
+      <div>
+        <strong>{{ commandDraft.name || 'Новая команда' }}</strong>
+        <span>{{ commandOriginalName ? 'Редактирование команды' : 'Создание команды' }}</span>
+      </div>
+      <app-button variant="primary" (pressed)="saveCommand.emit()" [disabled]="!canSave()">Сохранить</app-button>
+    </header>
+
+    <div class="graph-editor-layout">
+      <aside class="graph-toolbox">
+        <button class="toolbox-main" type="button" [class.active]="selectedEditorItem.type === 'command'" (click)="selectCommandSettings.emit()">Настройки команды</button>
+        <div class="toolbox-section">
+          <div class="toolbox-section-head"><span>Роли</span><button type="button" (click)="addRole.emit()">+</button></div>
+          <button class="toolbox-item" type="button" *ngFor="let role of roles; let i = index" [class.active]="selectedEditorItem.type === 'role' && selectedEditorItem.index === i" (click)="selectRole.emit(i)">{{ role.name || 'Новая роль' }}</button>
+        </div>
+        <div class="toolbox-section">
+          <div class="toolbox-section-head"><span>Сотрудники</span><button type="button" (click)="addEmployee.emit()">+</button></div>
+          <button class="toolbox-item employee-item" type="button" draggable="true" *ngFor="let employee of employees; let i = index" [class.active]="selectedEditorItem.type === 'employee' && selectedEditorItem.index === i" [class.dragging]="draggedEmployeeIndex === i" (click)="selectEmployee.emit(i)" (dragstart)="employeeDragStart.emit({ event: $event, index: i })" (dragend)="clearDragState.emit()">{{ employee.name || 'Новый сотрудник' }}</button>
+        </div>
+        <div class="toolbox-section">
+          <div class="toolbox-section-head"><span>Шаги</span><button type="button" (click)="addStep.emit()">+</button></div>
+          <button class="toolbox-item" type="button" *ngFor="let step of steps; let i = index" [class.active]="selectedEditorItem.type === 'step' && selectedEditorItem.index === i" (click)="selectStep.emit(i)">{{ i + 1 }}. {{ step.name || 'Новый шаг' }}</button>
+        </div>
+      </aside>
+
+      <main class="graph-canvas">
+        <div class="graph-canvas-title">
+          <strong>Линейный конвейер</strong>
+          <span>Порядок узлов слева направо определяет порядок выполнения.</span>
+        </div>
+        <div class="linear-graph" *ngIf="steps.length > 0; else emptyCommandGraph">
+          <div class="linear-node-wrap" *ngFor="let step of steps; let i = index">
+            <button class="linear-node" type="button" draggable="true" [class.active]="selectedPipelineStepIndex === i" [class.dragging]="draggedPipelineStepIndex === i" [class.drop-target]="pipelineDropTargetIndex === i && draggedPipelineStepIndex !== i" [class.employee-drop-target]="pipelineDropTargetIndex === i && draggedEmployeeIndex !== undefined" (click)="selectStep.emit(i)" (dragstart)="pipelineDragStart.emit({ event: $event, index: i })" (dragover)="pipelineDragOver.emit({ event: $event, index: i })" (drop)="pipelineDrop.emit({ event: $event, index: i })" (dragend)="clearDragState.emit()">
+              <span class="node-index">{{ i + 1 }}</span>
+              <strong>{{ step.name || 'Новый шаг' }}</strong>
+              <em>{{ step.employee || 'сотрудник не выбран' }}</em>
+              <small>{{ step.role || 'роль не выбрана' }}</small>
+            </button>
+            <div class="linear-edge" *ngIf="i < steps.length - 1"><span></span><b>→</b></div>
+          </div>
+        </div>
+        <ng-template #emptyCommandGraph>
+          <div class="graph-empty"><strong>Пока нет шагов</strong><span>Добавьте первый шаг в левом toolbox.</span></div>
+        </ng-template>
+      </main>
+
+      <aside class="graph-inspector">
+        <ng-container [ngSwitch]="selectedEditorItem.type">
+          <div class="inspector-section" *ngSwitchCase="'command'">
+            <h3>Команда</h3>
+            <label><span>Имя</span><input name="commandName" [(ngModel)]="commandDraft.name" placeholder="Разработка фичи" /></label>
+            <label><span>Описание</span><input name="commandDescription" [(ngModel)]="commandDraft.description" placeholder="Запустить поток разработки фичи" /></label>
+            <label><span>Шаблон задачи</span><textarea name="commandTemplate" [(ngModel)]="commandDraft.task_template" [placeholder]="'Выполни запрос:\n\n{{input}}'"></textarea></label>
+          </div>
+
+          <div class="inspector-section" *ngSwitchCase="'role'" [class.hidden]="!selectedRole">
+            <h3>Роль</h3>
+            <label><span>Название роли</span><input name="selectedRoleName" [(ngModel)]="selectedRole!.name" /></label>
+            <label><span>Обязанности</span><textarea name="selectedRolePrompt" [(ngModel)]="selectedRole!.prompt"></textarea></label>
+            <app-button variant="danger" (pressed)="removeRole.emit(selectedIndex())">Удалить роль</app-button>
+          </div>
+
+          <div class="inspector-section" *ngSwitchCase="'employee'" [class.hidden]="!selectedEmployee">
+            <h3>Сотрудник</h3>
+            <label><span>Имя</span><input name="selectedEmployeeName" [(ngModel)]="selectedEmployee!.name" /></label>
+            <label><span>Роли через запятую</span><input name="selectedEmployeeRoles" [(ngModel)]="selectedEmployee!.rolesText" /></label>
+            <div class="editor-grid">
+              <label><span>Backend</span><input name="selectedEmployeeBackend" [(ngModel)]="selectedEmployee!.backend" /></label>
+              <label><span>Model</span><input name="selectedEmployeeModel" [(ngModel)]="selectedEmployee!.model" /></label>
+            </div>
+            <label><span>Дополнительные инструкции</span><textarea name="selectedEmployeeInstructions" [(ngModel)]="selectedEmployee!.extra_instructions"></textarea></label>
+            <app-button variant="danger" (pressed)="removeEmployee.emit(selectedIndex())">Удалить сотрудника</app-button>
+          </div>
+
+          <div class="inspector-section" *ngSwitchCase="'step'" [class.hidden]="!selectedStep">
+            <h3>Шаг процесса</h3>
+            <label><span>Название шага</span><input name="selectedStepName" [(ngModel)]="selectedStep!.name" placeholder="проверка" /></label>
+            <label><span>Сотрудник</span><select name="selectedStepEmployee" [(ngModel)]="selectedStep!.employee"><option *ngFor="let employee of employees" [value]="employee.name">{{ employee.name }}</option></select></label>
+            <label><span>Роль на этом шаге</span><select name="selectedStepRole" [(ngModel)]="selectedStep!.role"><option *ngFor="let role of roles" [value]="role.name">{{ role.name }}</option></select></label>
+            <div class="pipeline-step-actions">
+              <app-button (pressed)="moveStep.emit({ index: selectedIndex(), direction: -1 })" [disabled]="selectedIndex() === 0">← Левее</app-button>
+              <app-button (pressed)="moveStep.emit({ index: selectedIndex(), direction: 1 })" [disabled]="selectedIndex() === steps.length - 1">Правее →</app-button>
+            </div>
+            <app-button variant="danger" (pressed)="removeStep.emit(selectedIndex())">Удалить шаг</app-button>
+          </div>
+        </ng-container>
+      </aside>
+    </div>
+  </div>
+</section>

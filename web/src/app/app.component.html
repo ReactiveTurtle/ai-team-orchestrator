@@ -1,333 +1,132 @@
-<section class="screen active" *ngIf="screen() === 'projects'">
-  <div class="projects-page">
-    <div class="projects-shell">
-      <div class="hero">
-        <div>
-          <div class="eyebrow">центр управления ai-team</div>
-          <h1>Выберите проект</h1>
-          <div class="subtitle">Откройте зарегистрированный проект, добавьте новый workspace по пути или уберите устаревшую карточку. Управление происходит в браузере; терминал только запускает локальный сервер.</div>
-        </div>
-        <div class="project-actions">
-          <button class="button" type="button" (click)="openCommandList()">Команды</button>
-          <button class="button primary" type="button" (click)="addFormOpen.set(!addFormOpen())">Добавить проект</button>
-          <button class="button" type="button" (click)="refreshProjects()">Обновить</button>
-        </div>
-      </div>
+<app-projects-page
+  *ngIf="screen() === 'projects'"
+  [projects]="projects()"
+  [activeProjectId]="activeProjectId()"
+  [addFormOpen]="addFormOpen()"
+  [projectPath]="projectPath"
+  [error]="error()"
+  (addFormOpenChange)="addFormOpen.set($event)"
+  (projectPathChange)="projectPath = $event"
+  (openCommands)="openCommandList()"
+  (refreshProjects)="refreshProjects()"
+  (addProject)="addProject()"
+  (openProject)="openProject($event)"
+  (removeProject)="removeProject($event.project, $event.event)"
+/>
 
-      <form class="add-project" *ngIf="addFormOpen()" (ngSubmit)="addProject()">
-        <label>
-          <span>Путь к проекту</span>
-          <input name="projectPath" [(ngModel)]="projectPath" placeholder="C:\projects\service-management" />
-        </label>
-        <button class="button primary" type="submit">Добавить</button>
-      </form>
+<app-tasks-page
+  *ngIf="screen() === 'tasks'"
+  [project]="activeProject()"
+  [tasks]="tasks()"
+  [activeTaskId]="taskId()"
+  [currentRunTaskId]="currentRunTaskId()"
+  [currentRunId]="currentRunId()"
+  [error]="error()"
+  (backToProjects)="backToProjects()"
+  (refreshTasks)="refreshTasks()"
+  (newTask)="newTask()"
+  (openTask)="loadTask($event)"
+/>
 
-      <div class="notice error" *ngIf="error()">{{ error() }}</div>
+<app-workspace-page
+  *ngIf="screen() === 'workspace'"
+  [project]="activeProject()"
+  [config]="config()"
+  [command]="command()"
+  [worker]="worker()"
+  [workerDetail]="workerDetail()"
+  [timeline]="timeline()"
+  [hasOlderMessages]="hasOlderMessages()"
+  [loadingOlderMessages]="loadingOlderMessages()"
+  [chatEmptyText]="chatEmptyText()"
+  [taskText]="taskText"
+  [providerCommand]="providerCommand"
+  [teamMembers]="teamMembers()"
+  [steps]="steps()"
+  [currentStep]="currentStep()"
+  [doneSteps]="doneSteps()"
+  [currentRunId]="currentRunId()"
+  [currentRunTaskId]="currentRunTaskId()"
+  [currentRole]="currentRole()"
+  [taskId]="taskId()"
+  [activeTask]="activeTask()"
+  [processNote]="processNote()"
+  [providerActivity]="providerActivity()"
+  [publicReasoning]="publicReasoning()"
+  [providerResult]="providerResult()"
+  [elapsedLabel]="elapsedLabel()"
+  [lastRun]="lastRun()"
+  [canStop]="canStop()"
+  (backToProjects)="backToProjects()"
+  (togglePalette)="paletteOpen.set(!paletteOpen())"
+  (commandChange)="command.set($event)"
+  (newCommand)="newCommand()"
+  (editCommand)="editCommand()"
+  (taskTextChange)="taskText = $event"
+  (composerKeydown)="onComposerKeydown($event)"
+  (runTask)="runTask()"
+  (providerCommandChange)="providerCommand = $event"
+  (saveProvider)="saveProvider()"
+  (clearProvider)="clearProvider()"
+  (openTasks)="openTasksPage()"
+  (newTask)="newTask()"
+  (stopRun)="stopRun()"
+  (scrolledToTop)="onTimelineScroll()"
+/>
 
-      <div class="cards" *ngIf="projects().length > 0; else emptyProjects">
-        <article class="card" *ngFor="let project of projects()" [class.active]="project.id === activeProjectId()" (click)="openProject(project)">
-          <div>
-            <div class="card-title">{{ project.name }}</div>
-            <div class="card-path">{{ project.path }}</div>
-          </div>
-          <div class="card-meta">
-            <span>{{ project.id === activeProjectId() ? 'Активный проект' : 'Зарегистрирован' }}</span>
-            <div class="card-buttons">
-              <button class="button primary" type="button" (click)="openProject(project); $event.stopPropagation()">Открыть</button>
-              <button class="button danger" type="button" (click)="removeProject(project, $event)">Убрать</button>
-            </div>
-          </div>
-        </article>
-      </div>
+<app-command-editor-page
+  *ngIf="screen() === 'command-editor'"
+  [commandDraft]="commandDraft"
+  [commandOriginalName]="commandOriginalName"
+  [roles]="commandDraftRoles"
+  [employees]="commandDraftEmployees"
+  [steps]="commandDraftSteps"
+  [selectedPipelineStepIndex]="selectedPipelineStepIndex()"
+  [selectedEditorItem]="selectedEditorItem()"
+  [draggedPipelineStepIndex]="draggedPipelineStepIndex()"
+  [draggedEmployeeIndex]="draggedEmployeeIndex()"
+  [pipelineDropTargetIndex]="pipelineDropTargetIndex()"
+  [selectedRole]="selectedRole()"
+  [selectedEmployee]="selectedEmployee()"
+  [selectedStep]="selectedStep()"
+  (closeEditor)="closeCommandEditor()"
+  (saveCommand)="saveCommand()"
+  (selectCommandSettings)="selectCommandSettings()"
+  (addRole)="addRole()"
+  (selectRole)="selectRole($event)"
+  (removeRole)="removeRole($event)"
+  (addEmployee)="addEmployee()"
+  (selectEmployee)="selectEmployee($event)"
+  (removeEmployee)="removeEmployee($event)"
+  (addStep)="addStep()"
+  (selectStep)="selectPipelineStep($event)"
+  (removeStep)="removeStep($event)"
+  (moveStep)="movePipelineStep($event.index, $event.direction)"
+  (pipelineDragStart)="onPipelineDragStart($event.event, $event.index)"
+  (employeeDragStart)="onEmployeeDragStart($event.event, $event.index)"
+  (pipelineDragOver)="onPipelineDragOver($event.event, $event.index)"
+  (pipelineDrop)="onPipelineDrop($event.event, $event.index)"
+  (clearDragState)="clearPipelineDragState()"
+/>
 
-      <ng-template #emptyProjects>
-        <div class="empty-card">Проектов пока нет. Добавьте папку, в которой есть .ai-team.</div>
-      </ng-template>
-    </div>
-  </div>
-</section>
+<app-palette
+  [open]="paletteOpen()"
+  [commands]="config()?.commands || []"
+  (projects)="backToProjects()"
+  (tasks)="openTasksPage()"
+  (newTask)="newTask(); paletteOpen.set(false)"
+  (selectCommand)="selectCommand($event)"
+  (stopRun)="stopRun(); paletteOpen.set(false)"
+/>
 
-<section class="screen active" *ngIf="screen() === 'workspace'">
-  <div class="app">
-    <main class="main">
-      <div class="topbar">
-        <div class="brand">ai-team</div>
-        <button class="button" type="button" (click)="backToProjects()">Проекты</button>
-        <div class="pill">Проект: <strong>{{ activeProject()?.name || '-' }}</strong></div>
-        <div class="pill">Ветка: <strong>{{ config()?.git?.branch || '-' }}</strong></div>
-        <div class="pill">Команда: <strong>{{ command() || '-' }}</strong></div>
-        <div class="pill">Исполнитель: <strong>{{ worker() }}</strong></div>
-        <button class="button" type="button" (click)="paletteOpen.set(!paletteOpen())">Меню <kbd>Ctrl</kbd>+<kbd>P</kbd></button>
-      </div>
-
-      <div class="timeline" #timelineContainer (scroll)="onTimelineScroll()">
-        <div class="history-loader" *ngIf="hasOlderMessages() || loadingOlderMessages()">
-          {{ loadingOlderMessages() ? 'Загружаю предыдущие сообщения...' : 'Прокрутите выше, чтобы загрузить историю' }}
-        </div>
-        <div class="chat-empty" *ngIf="timeline().length === 0">
-          <strong>Готово к новой задаче</strong>
-          <span>{{ chatEmptyText() }}</span>
-        </div>
-        <div class="msg" *ngFor="let message of timeline()" [class.user]="message.kind === 'user'" [class.assistant]="message.kind === 'assistant'" [class.event]="message.kind === 'event'" [class.reasoning]="message.kind === 'reasoning'">
-          <div class="role">{{ message.role }}</div>
-          <div class="body">{{ message.content }}</div>
-        </div>
-      </div>
-
-      <form class="composer" (ngSubmit)="runTask()">
-        <div class="accent"></div>
-        <textarea name="taskText" [(ngModel)]="taskText" (keydown)="onComposerKeydown($event)" placeholder="Опишите задачу... Enter отправляет, Shift+Enter переносит строку"></textarea>
-        <div class="composer-actions">
-          <button class="button primary" type="submit" [disabled]="!canSend()">Отправить</button>
-        </div>
-      </form>
-    </main>
-
-    <aside class="sidebar">
-      <div class="section">
-        <h3>Выбранная команда</h3>
-        <select class="select" [ngModel]="command()" (ngModelChange)="command.set($event)" name="command">
-          <option *ngFor="let item of config()?.commands || []" [value]="item.name">{{ item.description ? item.name + ' - ' + item.description : item.name }}</option>
-        </select>
-        <div class="row command-actions">
-          <button class="button" type="button" (click)="newCommand()">Новая команда</button>
-          <button class="button" type="button" (click)="editCommand()" [disabled]="!command()">Изменить</button>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Текущий исполнитель</h3>
-        <div class="kv"><strong>Статус</strong><span>{{ worker() }}</span><strong *ngIf="workerDetail()">Детали</strong><span *ngIf="workerDetail()">{{ workerDetail() }}</span></div>
-      </div>
-
-      <div class="section">
-        <h3>Состав команды</h3>
-        <div class="member-list">
-          <div class="member-card" *ngFor="let member of teamMembers()">
-            <strong>{{ member.name }}</strong>
-            <span>{{ member.role }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="section progress-panel">
-        <h3>Ход выполнения</h3>
-        <div class="progress-card" [class.running]="currentRunId()">
-          <div class="progress-head">
-            <strong>{{ currentRunId() ? 'В работе' : 'Ожидание' }}</strong>
-            <span>{{ elapsedLabel() }}</span>
-          </div>
-          <div class="progress-note">{{ processNote() }}</div>
-          <div class="run-context">
-            <div><span>Команда</span><strong>{{ command() || '-' }}</strong></div>
-            <div><span>Ветка</span><strong>{{ config()?.git?.branch || '-' }}</strong></div>
-            <div><span>Задача</span><strong>{{ currentRunTaskId() || taskId() || '-' }}</strong></div>
-            <div><span>Шаг</span><strong>{{ currentStep() || '-' }}</strong></div>
-            <div><span>Исполнитель</span><strong>{{ worker() }}</strong></div>
-            <div><span>Роль</span><strong>{{ currentRole() || '-' }}</strong></div>
-          </div>
-          <div class="provider-activity" *ngIf="providerActivity()"><span>Provider</span><strong>{{ providerActivity() }}</strong></div>
-          <div class="reasoning-box" *ngIf="publicReasoning()">
-            <div class="reasoning-title">Публичное обоснование текущей роли</div>
-            <div>{{ publicReasoning() }}</div>
-          </div>
-          <div class="result-box" *ngIf="providerResult()">
-            <div class="reasoning-title">Результат provider</div>
-            <div>{{ providerResult() }}</div>
-          </div>
-          <button class="button danger stop-run" type="button" (click)="stopRun()" [disabled]="!canStop()">Остановить текущий процесс</button>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Provider</h3>
-        <input class="provider-input" name="providerCommand" [(ngModel)]="providerCommand" placeholder="opencode run" />
-        <div class="row"><button class="button" type="button" (click)="saveProvider()">Сохранить</button><button class="button" type="button" (click)="clearProvider()">Очистить</button></div>
-      </div>
-
-      <div class="section">
-        <h3>Процесс</h3>
-        <div class="flow">
-          <div class="step" *ngFor="let step of steps()" [class.active]="currentStep() === step.name" [class.done]="doneSteps().has(step.name)">
-            <div class="name">{{ step.name }}</div>
-            <div class="employee">{{ step.employee }}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Текущая задача</h3>
-        <div class="task-current">{{ taskId() || 'не выбрана' }}</div>
-        <div class="row task-actions">
-          <button class="button" type="button" (click)="taskListOpen.set(true); refreshTasks()">Открыть список</button>
-          <button class="button" type="button" (click)="newTask()">Новая задача</button>
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>Последний запуск</h3>
-        <div class="kv"><strong>Запуск</strong><span>{{ lastRun()?.runId || 'нет' }}</span><strong *ngIf="lastRun()">Статус</strong><span *ngIf="lastRun()">{{ lastRun()?.status }}</span></div>
-      </div>
-    </aside>
-  </div>
-</section>
-
-<div class="overlay open" *ngIf="paletteOpen()">
-  <div class="palette">
-    <header>Меню</header>
-    <div class="palette-list">
-      <div class="palette-item" (click)="backToProjects()"><strong>Карточки проектов</strong><span>перейти к выбору проекта</span></div>
-      <div class="palette-item" (click)="taskListOpen.set(true); refreshTasks(); paletteOpen.set(false)"><strong>Задачи</strong><span>открыть список задач</span></div>
-      <div class="palette-item" (click)="newTask(); paletteOpen.set(false)"><strong>Новая задача</strong><span>создать пустую задачу</span></div>
-      <div class="palette-item" *ngFor="let item of config()?.commands || []" (click)="selectCommand(item.name)"><strong>{{ item.name }}</strong><span>{{ item.description || 'переключить процесс' }}</span></div>
-      <div class="palette-item" (click)="stopRun(); paletteOpen.set(false)"><strong>Остановить текущий запуск</strong><span>прервать provider</span></div>
-    </div>
-  </div>
-</div>
-
-<section class="screen active" *ngIf="screen() === 'command-editor'">
-  <div class="graph-editor-page">
-    <header class="graph-editor-topbar">
-      <button class="button" type="button" (click)="closeCommandEditor()">← Команды</button>
-      <div>
-        <strong>{{ commandDraft.name || 'Новая команда' }}</strong>
-        <span>{{ commandOriginalName ? 'Редактирование команды' : 'Создание команды' }}</span>
-      </div>
-      <button class="button primary" type="button" (click)="saveCommand()" [disabled]="!commandDraft.name.trim() || !commandDraft.task_template?.trim() || commandDraftSteps.length === 0">Сохранить</button>
-    </header>
-
-    <div class="graph-editor-layout">
-      <aside class="graph-toolbox">
-        <button class="toolbox-main" type="button" [class.active]="selectedEditorItem().type === 'command'" (click)="selectCommandSettings()">Настройки команды</button>
-        <div class="toolbox-section">
-          <div class="toolbox-section-head"><span>Роли</span><button type="button" (click)="addRole()">+</button></div>
-          <button class="toolbox-item" type="button" *ngFor="let role of commandDraftRoles; let i = index" [class.active]="selectedEditorItem().type === 'role' && selectedEditorItem().index === i" (click)="selectRole(i)">{{ role.name || 'Новая роль' }}</button>
-        </div>
-        <div class="toolbox-section">
-          <div class="toolbox-section-head"><span>Сотрудники</span><button type="button" (click)="addEmployee()">+</button></div>
-          <button class="toolbox-item employee-item" type="button" draggable="true" *ngFor="let employee of commandDraftEmployees; let i = index" [class.active]="selectedEditorItem().type === 'employee' && selectedEditorItem().index === i" [class.dragging]="draggedEmployeeIndex() === i" (click)="selectEmployee(i)" (dragstart)="onEmployeeDragStart($event, i)" (dragend)="clearPipelineDragState()">{{ employee.name || 'Новый сотрудник' }}</button>
-        </div>
-        <div class="toolbox-section">
-          <div class="toolbox-section-head"><span>Шаги</span><button type="button" (click)="addStep()">+</button></div>
-          <button class="toolbox-item" type="button" *ngFor="let step of commandDraftSteps; let i = index" [class.active]="selectedEditorItem().type === 'step' && selectedEditorItem().index === i" (click)="selectPipelineStep(i)">{{ i + 1 }}. {{ step.name || 'Новый шаг' }}</button>
-        </div>
-      </aside>
-
-      <main class="graph-canvas">
-        <div class="graph-canvas-title">
-          <strong>Линейный конвейер</strong>
-          <span>Порядок узлов слева направо определяет порядок выполнения.</span>
-        </div>
-        <div class="linear-graph" *ngIf="commandDraftSteps.length > 0; else emptyCommandGraph">
-          <div class="linear-node-wrap" *ngFor="let step of commandDraftSteps; let i = index">
-            <button class="linear-node" type="button" draggable="true" [class.active]="selectedPipelineStepIndex() === i" [class.dragging]="draggedPipelineStepIndex() === i" [class.drop-target]="pipelineDropTargetIndex() === i && draggedPipelineStepIndex() !== i" [class.employee-drop-target]="pipelineDropTargetIndex() === i && draggedEmployeeIndex() !== undefined" (click)="selectPipelineStep(i)" (dragstart)="onPipelineDragStart($event, i)" (dragover)="onPipelineDragOver($event, i)" (drop)="onPipelineDrop($event, i)" (dragend)="clearPipelineDragState()">
-              <span class="node-index">{{ i + 1 }}</span>
-              <strong>{{ step.name || 'Новый шаг' }}</strong>
-              <em>{{ step.employee || 'сотрудник не выбран' }}</em>
-              <small>{{ step.role || 'роль не выбрана' }}</small>
-            </button>
-            <div class="linear-edge" *ngIf="i < commandDraftSteps.length - 1"><span></span><b>→</b></div>
-          </div>
-        </div>
-        <ng-template #emptyCommandGraph>
-          <div class="graph-empty"><strong>Пока нет шагов</strong><span>Добавьте первый шаг в левом toolbox.</span></div>
-        </ng-template>
-      </main>
-
-      <aside class="graph-inspector">
-        <ng-container [ngSwitch]="selectedEditorItem().type">
-          <div class="inspector-section" *ngSwitchCase="'command'">
-            <h3>Команда</h3>
-            <label><span>Имя</span><input name="commandName" [(ngModel)]="commandDraft.name" placeholder="feature" /></label>
-            <label><span>Описание</span><input name="commandDescription" [(ngModel)]="commandDraft.description" placeholder="Запустить feature flow" /></label>
-            <label><span>Шаблон задачи</span><textarea name="commandTemplate" [(ngModel)]="commandDraft.task_template" [placeholder]="'Выполни запрос:\n\n{{input}}'"></textarea></label>
-          </div>
-
-          <div class="inspector-section" *ngSwitchCase="'role'" [class.hidden]="!selectedRole()">
-            <h3>Роль</h3>
-            <label><span>Название роли</span><input name="selectedRoleName" [(ngModel)]="selectedRole()!.name" /></label>
-            <label><span>Обязанности</span><textarea name="selectedRolePrompt" [(ngModel)]="selectedRole()!.prompt"></textarea></label>
-            <button class="button danger" type="button" (click)="removeRole(selectedEditorItem().index || 0)">Удалить роль</button>
-          </div>
-
-          <div class="inspector-section" *ngSwitchCase="'employee'" [class.hidden]="!selectedEmployee()">
-            <h3>Сотрудник</h3>
-            <label><span>Имя</span><input name="selectedEmployeeName" [(ngModel)]="selectedEmployee()!.name" /></label>
-            <label><span>Роли через запятую</span><input name="selectedEmployeeRoles" [(ngModel)]="selectedEmployee()!.rolesText" /></label>
-            <div class="editor-grid">
-              <label><span>Backend</span><input name="selectedEmployeeBackend" [(ngModel)]="selectedEmployee()!.backend" /></label>
-              <label><span>Model</span><input name="selectedEmployeeModel" [(ngModel)]="selectedEmployee()!.model" /></label>
-            </div>
-            <label><span>Дополнительные инструкции</span><textarea name="selectedEmployeeInstructions" [(ngModel)]="selectedEmployee()!.extra_instructions"></textarea></label>
-            <button class="button danger" type="button" (click)="removeEmployee(selectedEditorItem().index || 0)">Удалить сотрудника</button>
-          </div>
-
-          <div class="inspector-section" *ngSwitchCase="'step'" [class.hidden]="!selectedStep()">
-            <h3>Шаг процесса</h3>
-            <label><span>Название шага</span><input name="selectedStepName" [(ngModel)]="selectedStep()!.name" placeholder="proverka" /></label>
-            <label><span>Сотрудник</span><select name="selectedStepEmployee" [(ngModel)]="selectedStep()!.employee"><option *ngFor="let employee of commandDraftEmployees" [value]="employee.name">{{ employee.name }}</option></select></label>
-            <label><span>Роль на этом шаге</span><select name="selectedStepRole" [(ngModel)]="selectedStep()!.role"><option *ngFor="let role of commandDraftRoles" [value]="role.name">{{ role.name }}</option></select></label>
-            <div class="pipeline-step-actions">
-              <button class="button" type="button" (click)="movePipelineStep(selectedEditorItem().index || 0, -1)" [disabled]="(selectedEditorItem().index || 0) === 0">← Левее</button>
-              <button class="button" type="button" (click)="movePipelineStep(selectedEditorItem().index || 0, 1)" [disabled]="(selectedEditorItem().index || 0) === commandDraftSteps.length - 1">Правее →</button>
-            </div>
-            <button class="button danger" type="button" (click)="removeStep(selectedEditorItem().index || 0)">Удалить шаг</button>
-          </div>
-        </ng-container>
-      </aside>
-    </div>
-  </div>
-</section>
-
-<div class="overlay open" *ngIf="commandListOpen()">
-  <div class="command-list-modal">
-    <header>
-      <div>
-        <strong>Команды</strong>
-        <span>Глобальные команды: роли, сотрудники и конвейер работы.</span>
-      </div>
-      <div class="row">
-        <button class="button primary" type="button" (click)="newCommand(); commandListOpen.set(false)">Новая команда</button>
-        <button class="button" type="button" (click)="commandListOpen.set(false)">Закрыть</button>
-      </div>
-    </header>
-    <div class="command-overview-list">
-      <button class="command-overview" type="button" *ngFor="let item of config()?.commands || []" (click)="chooseCommandFromList(item.name)">
-        <div class="command-overview-main">
-          <strong>{{ item.name }}</strong>
-          <span>{{ item.description || 'без описания' }}</span>
-        </div>
-        <div class="command-overview-meta">
-          <span>{{ commandEmployees(item).length }} сотрудников</span>
-          <span>{{ commandSteps(item).length }} шагов</span>
-        </div>
-      </button>
-      <div class="empty-card" *ngIf="(config()?.commands || []).length === 0">Команд пока нет.</div>
-    </div>
-  </div>
-</div>
-
-<div class="overlay open" *ngIf="taskListOpen()">
-  <div class="task-drawer">
-    <header>
-      <div>
-        <strong>Задачи</strong>
-        <span>Выбор задачи не останавливает текущий процесс.</span>
-      </div>
-      <button class="button" type="button" (click)="taskListOpen.set(false)">Закрыть</button>
-    </header>
-    <div class="task-list-actions">
-      <button class="button primary" type="button" (click)="newTask()">Новая задача</button>
-      <button class="button" type="button" (click)="refreshTasks()">Обновить</button>
-    </div>
-    <div class="task-list">
-      <button class="task-item" type="button" *ngFor="let task of tasks()" [class.active]="task.id === taskId()" (click)="loadTask(task.id)">
-        <strong>{{ task.id }}</strong>
-        <span>{{ task.id === currentRunTaskId() && currentRunId() ? 'выполняется сейчас' : 'задача' }}</span>
-      </button>
-    </div>
-    <div class="empty-card" *ngIf="tasks().length === 0">Задач пока нет.</div>
-  </div>
-</div>
+<app-command-list
+  [open]="commandListOpen()"
+  [commands]="config()?.commands || []"
+  [employeesCount]="commandEmployeeCount"
+  [stepsCount]="commandStepCount"
+  (createCommand)="newCommand(); commandListOpen.set(false)"
+  (close)="commandListOpen.set(false)"
+  (selectCommand)="chooseCommandFromList($event)"
+/>
 
 <div class="busy" *ngIf="busy()">Загрузка...</div>

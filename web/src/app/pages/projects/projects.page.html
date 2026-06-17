@@ -1,0 +1,48 @@
+<section class="screen active">
+  <div class="projects-page">
+    <div class="projects-shell">
+      <div class="hero">
+        <div>
+          <div class="eyebrow">центр управления ai-team</div>
+          <h1>Выберите проект</h1>
+          <div class="subtitle">Откройте зарегистрированный проект, добавьте новый workspace по пути или уберите устаревшую карточку. Управление происходит в браузере; терминал только запускает локальный сервер.</div>
+        </div>
+        <div class="project-actions">
+          <app-button (pressed)="openCommands.emit()">Команды</app-button>
+          <app-button variant="primary" (pressed)="addFormOpenChange.emit(!addFormOpen)">Добавить проект</app-button>
+          <app-button (pressed)="refreshProjects.emit()">Обновить</app-button>
+        </div>
+      </div>
+
+      <form class="add-project" *ngIf="addFormOpen" (ngSubmit)="addProject.emit()">
+        <label>
+          <span>Путь к проекту</span>
+          <input name="projectPath" [ngModel]="projectPath" (ngModelChange)="projectPathChange.emit($event)" placeholder="C:\projects\service-management" />
+        </label>
+        <app-button variant="primary" type="submit">Добавить</app-button>
+      </form>
+
+      <div class="notice error" *ngIf="error">{{ error }}</div>
+
+      <div class="cards" *ngIf="projects.length > 0; else emptyProjects">
+        <article class="card" *ngFor="let project of projects" [class.active]="project.id === activeProjectId" (click)="openProject.emit(project)">
+          <div>
+            <div class="card-title">{{ project.name }}</div>
+            <div class="card-path">{{ project.path }}</div>
+          </div>
+          <div class="card-meta">
+            <span>{{ project.id === activeProjectId ? 'Активный проект' : 'Зарегистрирован' }}</span>
+            <div class="card-buttons">
+              <app-button variant="primary" (pressed)="openProject.emit(project); $event.stopPropagation()">Открыть</app-button>
+              <app-button variant="danger" (pressed)="removeProject.emit({ project, event: $event }); $event.stopPropagation()">Убрать</app-button>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <ng-template #emptyProjects>
+        <div class="empty-card">Проектов пока нет. Добавьте папку, в которой есть .ai-team.</div>
+      </ng-template>
+    </div>
+  </div>
+</section>

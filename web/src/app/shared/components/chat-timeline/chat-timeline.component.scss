@@ -1,0 +1,12 @@
+.timeline { padding: 16px; overflow-y: auto; overflow-x: hidden; min-height: 0; max-height: 100%; overscroll-behavior: contain; scrollbar-gutter: stable; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px var(--shadow); }
+.history-loader { width: fit-content; margin: 0 auto 14px; border: 1px solid var(--border); background: var(--panel-soft); color: var(--muted); border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+.chat-empty { min-height: 100%; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); text-align: center; padding: 32px; }
+.chat-empty strong { color: var(--text); font-size: 20px; }
+.chat-empty span { max-width: 420px; line-height: 1.45; }
+.msg { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; margin-bottom: 16px; }
+.msg .role { color: var(--muted-2); font-weight: 700; text-align: right; }
+.msg .body { background: #fffaf1; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; white-space: pre-wrap; line-height: 1.45; overflow-wrap: anywhere; }
+.msg.user .role { color: var(--accent-2); }
+.msg.assistant .role { color: var(--good); }
+.msg.event .role { color: var(--warn); }
+.msg.reasoning .role { color: var(--accent); }

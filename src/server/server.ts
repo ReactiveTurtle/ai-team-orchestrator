@@ -163,7 +163,7 @@ async function saveCommand(rootDir: string, command: CommandProfilePayload, orig
   const config = await loadConfig(rootDir);
   const name = command.name?.trim();
   if (!name) throw new Error("Укажите имя команды.");
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error("Имя команды может содержать только латиницу, цифры, _ и -.");
+  if (!/^[\p{L}\p{N}_ -]+$/u.test(name)) throw new Error("Имя команды может содержать буквы, цифры, пробелы, _ и -.");
   if (!command.team && !command.team_config) throw new Error("Опишите команду исполнителей.");
   if (!command.task && !command.task_template) throw new Error("Укажите task или task_template.");
 
@@ -317,13 +317,27 @@ function closeClients(record: RunRecord): void {
   record.clients.clear();
 }
 
-async function listSessions(rootDir: string): Promise<Array<{ id: string; mtime: number }>> {
+async function listSessions(rootDir: string): Promise<Array<{ id: string; title: string; mtime: number }>> {
   const config = await loadConfig(rootDir);
   const dir = join(config.aiTeamDir, "sessions");
   await mkdir(dir, { recursive: true });
   const entries = (await readdir(dir)).filter((entry) => entry.endsWith(".jsonl"));
-  const sessions = await Promise.all(entries.map(async (entry) => ({ id: entry, mtime: (await stat(join(dir, entry))).mtimeMs })));
+  const sessions = await Promise.all(entries.map(async (entry) => {
+    const path = join(dir, entry);
+    return { id: entry, title: await sessionTitle(path), mtime: (await stat(path)).mtimeMs };
+  }));
   return sessions.sort((a, b) => b.mtime - a.mtime);
+}
+
+async function sessionTitle(path: string): Promise<string> {
+  const content = await readFile(path, "utf8").catch(() => "");
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const message = JSON.parse(line) as { role?: string; content?: string; title?: string };
+    const title = message.title ?? (message.role === "user" ? message.content : undefined);
+    if (title?.trim()) return title.trim().replace(/\s+/g, " ").slice(0, 90);
+  }
+  return "Новая задача";
 }
 
 async function createSession(rootDir: string): Promise<{ id: string }> {

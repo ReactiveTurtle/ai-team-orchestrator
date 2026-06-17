@@ -1,0 +1,7 @@
+.overlay { position: fixed; inset: 0; background: rgba(72,55,36,.22); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.palette { width: min(720px, 100%); max-height: 74vh; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 24px 80px var(--shadow); overflow: hidden; }
+.palette header { padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--accent); font-weight: 750; }
+.palette-list { max-height: 60vh; overflow: auto; padding: 8px; }
+.palette-item { padding: 11px 12px; border-radius: 12px; color: var(--text); cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+.palette-item:hover { background: var(--panel-soft); }
+.palette-item span { color: var(--muted-2); overflow-wrap: anywhere; }

@@ -1,0 +1,27 @@
+<div class="overlay open" *ngIf="open">
+  <div class="command-list-modal">
+    <header>
+      <div>
+        <strong>Команды</strong>
+        <span>Глобальные команды: роли, сотрудники и конвейер работы.</span>
+      </div>
+      <div class="row">
+        <app-button variant="primary" (pressed)="createCommand.emit()">Новая команда</app-button>
+        <app-button (pressed)="close.emit()">Закрыть</app-button>
+      </div>
+    </header>
+    <div class="command-overview-list">
+      <button class="command-overview" type="button" *ngFor="let item of commands" (click)="selectCommand.emit(item.name)">
+        <div class="command-overview-main">
+          <strong>{{ item.name }}</strong>
+          <span>{{ item.description || 'без описания' }}</span>
+        </div>
+        <div class="command-overview-meta">
+          <span>{{ employeesCount(item) }} сотрудников</span>
+          <span>{{ stepsCount(item) }} шагов</span>
+        </div>
+      </button>
+      <div class="empty-card" *ngIf="commands.length === 0">Команд пока нет.</div>
+    </div>
+  </div>
+</div>

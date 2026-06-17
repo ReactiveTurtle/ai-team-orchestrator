@@ -1,0 +1,15 @@
+.button {
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.button:hover { background: var(--panel-raised); }
+.button:disabled { opacity: .5; cursor: not-allowed; background: #ede5d9; color: var(--muted-2); }
+.button:disabled:hover { background: #ede5d9; }
+.button.primary { background: var(--accent); border-color: #6144b0; color: #fff; }
+.button.danger { background: #fff0ef; border-color: #d8a1a1; color: var(--danger); }
+.button.full { width: 100%; }
