@@ -60,6 +60,7 @@ type AppConfig = {
 
 type TaskEntry = { id: string; mtime: number };
 type TaskMessage = { role?: string; kind?: string; content?: string; step?: string; employee?: string; status?: string; reasoning?: string };
+type TaskPage = { messages: TaskMessage[]; total: number; offset: number; hasMoreBefore: boolean };
 type TimelineMessage = { role: string; content: string; kind: string };
 type ProviderEvent =
   | { type: "reasoning"; text: string }
@@ -75,6 +76,7 @@ type ProviderEvent =
 })
 export class AppComponent {
   private readonly http = inject(HttpClient);
+  private readonly chatPageSize = 50;
 
   @ViewChild("timelineContainer") private timelineContainer?: ElementRef<HTMLElement>;
 
@@ -86,14 +88,18 @@ export class AppComponent {
   readonly tasks = signal<TaskEntry[]>([]);
   readonly taskId = signal<string | undefined>(undefined);
   readonly timeline = signal<TimelineMessage[]>([]);
+  readonly hasOlderMessages = signal(false);
+  readonly loadingOlderMessages = signal(false);
   readonly chatEmptyText = signal("Опишите, что нужно сделать. Команда начнёт работу после отправки.");
   readonly currentRunId = signal<string | undefined>(undefined);
   readonly currentRunTaskId = signal<string | undefined>(undefined);
   readonly currentStep = signal<string | undefined>(undefined);
+  readonly currentRole = signal<string | undefined>(undefined);
   readonly doneSteps = signal<Set<string>>(new Set());
   readonly worker = signal("ожидание");
   readonly workerDetail = signal("");
   readonly processNote = signal("Ожидаю задачу.");
+  readonly providerActivity = signal("");
   readonly publicReasoning = signal("");
   readonly providerResult = signal("");
   readonly runStartedAt = signal<number | undefined>(undefined);
@@ -115,6 +121,7 @@ export class AppComponent {
   projectPath = "";
   providerCommand = "";
   taskText = "";
+  private timelineOffset = 0;
   commandOriginalName = "";
   commandDraft: CommandConfig = { name: "", team: "", description: "", task_template: "" };
   commandDraftRoles: RoleDraft[] = [];
@@ -257,6 +264,8 @@ export class AppComponent {
       this.activeProjectId.set(registry.activeProjectId);
       await this.loadWorkspace();
       this.screen.set("workspace");
+      this.taskListOpen.set(true);
+      this.scrollTimelineToBottom();
     });
   }
 
@@ -268,9 +277,11 @@ export class AppComponent {
     if (!this.currentRunId()) {
       this.doneSteps.set(new Set());
       this.currentStep.set(undefined);
+      this.currentRole.set(undefined);
       this.worker.set("ожидание");
       this.workerDetail.set("");
       this.processNote.set("Ожидаю задачу.");
+      this.providerActivity.set("");
       this.publicReasoning.set("");
       this.providerResult.set("");
     }
@@ -294,18 +305,47 @@ export class AppComponent {
 
   async loadTask(id: string): Promise<void> {
     await this.request(async () => {
-      const data = await this.get<{ messages: TaskMessage[] }>(`/api/sessions/${encodeURIComponent(id)}`);
+      const data = await this.get<TaskPage>(`/api/sessions/${encodeURIComponent(id)}?limit=${this.chatPageSize}`);
       this.taskId.set(id);
+      this.timelineOffset = data.offset;
+      this.hasOlderMessages.set(data.hasMoreBefore);
       this.timeline.set((data.messages ?? []).map((message) => ({
         role: timelineRole(message),
         content: renderTaskMessage(message),
         kind: timelineKind(message)
       })));
       if (this.timeline().length === 0) this.chatEmptyText.set("Опишите, что нужно сделать. Команда начнёт работу после отправки.");
-      this.scrollTimelineToBottom();
       await this.refreshTasks();
       this.taskListOpen.set(false);
+      this.scrollTimelineToBottom();
     });
+  }
+
+  async onTimelineScroll(): Promise<void> {
+    const element = this.timelineContainer?.nativeElement;
+    const id = this.taskId();
+    if (!element || !id || element.scrollTop > 48 || !this.hasOlderMessages() || this.loadingOlderMessages()) return;
+    this.loadingOlderMessages.set(true);
+    const previousHeight = element.scrollHeight;
+    try {
+      const limit = Math.min(this.chatPageSize, this.timelineOffset);
+      const offset = Math.max(0, this.timelineOffset - limit);
+      const data = await this.get<TaskPage>(`/api/sessions/${encodeURIComponent(id)}?offset=${offset}&limit=${limit}`);
+      const older = (data.messages ?? []).map((message) => ({
+        role: timelineRole(message),
+        content: renderTaskMessage(message),
+        kind: timelineKind(message)
+      }));
+      this.timelineOffset = data.offset;
+      this.hasOlderMessages.set(data.hasMoreBefore);
+      this.timeline.set([...older, ...this.timeline()]);
+      window.requestAnimationFrame(() => {
+        const current = this.timelineContainer?.nativeElement;
+        if (current) current.scrollTop = current.scrollHeight - previousHeight;
+      });
+    } finally {
+      this.loadingOlderMessages.set(false);
+    }
   }
 
   async saveProvider(): Promise<void> {
@@ -333,9 +373,11 @@ export class AppComponent {
     this.pushMessage("вы", input, "user");
     this.doneSteps.set(new Set());
     this.currentStep.set(undefined);
+    this.currentRole.set(undefined);
     this.worker.set("запуск");
     this.workerDetail.set("");
     this.processNote.set("Запуск команды и подготовка первого исполнителя.");
+    this.providerActivity.set("");
     this.publicReasoning.set("");
     this.providerResult.set("");
     this.runStartedAt.set(Date.now());
@@ -596,10 +638,10 @@ export class AppComponent {
         const employee = String(payload["employee"] ?? "исполнитель");
         const role = String(payload["role"] ?? "");
         this.currentStep.set(step);
+        this.currentRole.set(role || undefined);
         this.worker.set(employee);
         this.workerDetail.set(`${step} · ${role}`);
         this.processNote.set(`Сейчас работает ${employee}. Роль: ${role}. Шаг: ${step}.`);
-        this.pushRunMessage("событие", `${employee} начал шаг ${step}`, "event");
       } else if (payload["type"] === "provider_event") {
         this.handleProviderEvent(payload["event"] as ProviderEvent);
       } else if (payload["type"] === "step_completed") {
@@ -610,7 +652,6 @@ export class AppComponent {
         next.add(step);
         this.doneSteps.set(next);
         this.processNote.set(`${employee} завершил шаг ${step} со статусом ${status}.`);
-        this.pushRunMessage("событие", `${employee} завершил шаг ${step} · ${status}`, "event");
         if (typeof payload["summary"] === "string") {
           this.providerResult.set(payload["summary"]);
           this.pushRunMessage(`результат ${step}`, payload["summary"], "assistant");
@@ -632,6 +673,7 @@ export class AppComponent {
         this.currentRunId.set(undefined);
         this.currentRunTaskId.set(undefined);
         this.currentStep.set(undefined);
+        this.currentRole.set(undefined);
         this.worker.set("ожидание");
         this.workerDetail.set("");
         const status = String(payload["status"] ?? "done");
@@ -641,12 +683,15 @@ export class AppComponent {
         source.close();
         void this.refreshTasks();
       } else if (payload["type"] === "error") {
-        this.pushRunMessage("ошибка", String(payload["message"] ?? "Неизвестная ошибка"), "event");
+        this.error.set(String(payload["message"] ?? "Неизвестная ошибка"));
         this.worker.set("ожидание");
         this.processNote.set("Запуск остановлен или завершился ошибкой.");
+        this.providerActivity.set("");
         this.runStartedAt.set(undefined);
         this.currentRunId.set(undefined);
         this.currentRunTaskId.set(undefined);
+        this.currentStep.set(undefined);
+        this.currentRole.set(undefined);
         source.close();
       }
     };
@@ -681,22 +726,24 @@ export class AppComponent {
     }
     if (event.type === "tool") {
       const content = [event.tool, event.status, event.title].filter(Boolean).join(" · ") || "OpenCode tool event";
+      this.providerActivity.set(content);
       this.processNote.set(content);
-      this.pushRunMessage("инструмент", content, "event");
       return;
     }
     if (event.type === "step") {
       const content = event.reason ? `OpenCode step ${event.status}: ${event.reason}` : `OpenCode step ${event.status}`;
+      this.providerActivity.set(content);
       this.processNote.set(content);
-      this.pushRunMessage("opencode", content, "event");
     }
   }
 
   private scrollTimelineToBottom(): void {
-    window.setTimeout(() => {
+    const scroll = (): void => {
       const element = this.timelineContainer?.nativeElement;
       if (element) element.scrollTop = element.scrollHeight;
-    });
+    };
+    window.requestAnimationFrame(scroll);
+    window.setTimeout(scroll, 80);
   }
 
   private async request<T>(callback: () => Promise<T>): Promise<T | undefined> {

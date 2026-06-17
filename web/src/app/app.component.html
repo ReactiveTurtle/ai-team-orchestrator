@@ -60,7 +60,10 @@
         <button class="button" type="button" (click)="paletteOpen.set(!paletteOpen())">Меню <kbd>Ctrl</kbd>+<kbd>P</kbd></button>
       </div>
 
-      <div class="timeline" #timelineContainer>
+      <div class="timeline" #timelineContainer (scroll)="onTimelineScroll()">
+        <div class="history-loader" *ngIf="hasOlderMessages() || loadingOlderMessages()">
+          {{ loadingOlderMessages() ? 'Загружаю предыдущие сообщения...' : 'Прокрутите выше, чтобы загрузить историю' }}
+        </div>
         <div class="chat-empty" *ngIf="timeline().length === 0">
           <strong>Готово к новой задаче</strong>
           <span>{{ chatEmptyText() }}</span>
@@ -115,6 +118,15 @@
             <span>{{ elapsedLabel() }}</span>
           </div>
           <div class="progress-note">{{ processNote() }}</div>
+          <div class="run-context">
+            <div><span>Команда</span><strong>{{ command() || '-' }}</strong></div>
+            <div><span>Ветка</span><strong>{{ config()?.git?.branch || '-' }}</strong></div>
+            <div><span>Задача</span><strong>{{ currentRunTaskId() || taskId() || '-' }}</strong></div>
+            <div><span>Шаг</span><strong>{{ currentStep() || '-' }}</strong></div>
+            <div><span>Исполнитель</span><strong>{{ worker() }}</strong></div>
+            <div><span>Роль</span><strong>{{ currentRole() || '-' }}</strong></div>
+          </div>
+          <div class="provider-activity" *ngIf="providerActivity()"><span>Provider</span><strong>{{ providerActivity() }}</strong></div>
           <div class="reasoning-box" *ngIf="publicReasoning()">
             <div class="reasoning-title">Публичное обоснование текущей роли</div>
             <div>{{ publicReasoning() }}</div>

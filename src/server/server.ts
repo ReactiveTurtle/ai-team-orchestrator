@@ -106,7 +106,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (method === "POST" && url.pathname === "/api/sessions") return sendJson(res, { session: await createSession(rootDir) });
   if (method === "GET" && url.pathname.startsWith("/api/sessions/")) {
     const id = decodeURIComponent(url.pathname.slice("/api/sessions/".length));
-    return sendJson(res, { id, messages: await readSession(rootDir, id) });
+    const offset = optionalInteger(url.searchParams.get("offset"));
+    const limit = optionalInteger(url.searchParams.get("limit"));
+    return sendJson(res, { id, ...await readSession(rootDir, id, { offset, limit }) });
   }
   if (method === "POST" && url.pathname === "/api/provider") {
     const body = await readJson<{ command?: string }>(req);
@@ -333,11 +335,22 @@ async function createSession(rootDir: string): Promise<{ id: string }> {
   return { id };
 }
 
-async function readSession(rootDir: string, id: string): Promise<unknown[]> {
+async function readSession(rootDir: string, id: string, page: { offset?: number; limit?: number } = {}): Promise<{ messages: unknown[]; total: number; offset: number; hasMoreBefore: boolean }> {
   const config = await loadConfig(rootDir);
   const path = join(config.aiTeamDir, "sessions", basename(id));
   const content = await readFile(path, "utf8").catch(() => "");
-  return content.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  const messages = content.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  const total = messages.length;
+  const limit = Math.max(1, page.limit ?? (total || 1));
+  const offset = Math.max(0, Math.min(page.offset ?? Math.max(0, total - limit), total));
+  const end = Math.min(total, offset + limit);
+  return { messages: messages.slice(offset, end), total, offset, hasMoreBefore: offset > 0 };
+}
+
+function optionalInteger(value: string | null): number | undefined {
+  if (value === null || value.trim() === "") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 async function appendSession(rootDir: string, id: string | undefined, message: Record<string, unknown>): Promise<void> {
