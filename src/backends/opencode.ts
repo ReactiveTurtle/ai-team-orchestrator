@@ -24,7 +24,7 @@ export class OpenCodeBackend implements ExecutionBackend {
 
   private dryRun(input: EmployeeRunInput): EmployeeRunResult {
     const role = input.employee.role;
-    if (role === "reviewer") {
+    if (isReviewerRole(role)) {
       return {
         status: "approved",
         reasoning_summary: `Шаг проверен на уровне ${input.reviewLevel ?? 3} в dry-run режиме. Provider не запускался, поэтому это не реальное обоснование ревью.`,
@@ -34,7 +34,7 @@ export class OpenCodeBackend implements ExecutionBackend {
       };
     }
 
-    if (role === "explainer") {
+    if (isExplainerRole(role)) {
       return {
         status: "done",
         reasoning_summary: "Подготовлена сводка завершения в dry-run режиме без запуска provider.",
@@ -199,7 +199,7 @@ function parseResult(output: ProviderOutput, input: EmployeeRunInput): EmployeeR
   const normalized = resultText.toLowerCase();
   const status = normalized.includes("needs_fix") || normalized.includes("needs fix")
     ? "needs_fix"
-    : input.employee.role === "explainer" || normalized.includes("done")
+    : isExplainerRole(input.employee.role) || normalized.includes("done")
       ? "done"
       : "approved";
 
@@ -215,4 +215,14 @@ function extractReasoningSummary(output: string): string | undefined {
   const match = output.match(/(?:#{1,3}\s*)?(?:public reasoning|public reasoning summary|reasoning summary|rationale)\s*:?\s*\n?([\s\S]*?)(?:\n#{1,3}\s|\n(?:summary|result|findings|decisions|status)\s*:|$)/i);
   const value = match?.[1]?.trim();
   return value || undefined;
+}
+
+function isReviewerRole(role: string): boolean {
+  const normalized = role.toLowerCase();
+  return normalized === "reviewer" || normalized === "ревьюер" || normalized.includes("review") || normalized.includes("ревью");
+}
+
+function isExplainerRole(role: string): boolean {
+  const normalized = role.toLowerCase();
+  return normalized === "explainer" || normalized === "объясняющий" || normalized.includes("explain") || normalized.includes("объясн");
 }

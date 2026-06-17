@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { CommandConfig, EmployeeConfig, TeamConfig } from "./types.js";
+import { migrateCommandProfileNames } from "./global-name-migration.js";
 
 export type GlobalCommandProfile = {
   command: CommandConfig;
@@ -19,7 +20,10 @@ const registryPath = join(process.env.APPDATA ?? join(homedir(), ".config"), "ai
 
 export async function loadGlobalCommandRegistry(): Promise<GlobalCommandRegistry> {
   if (!existsSync(registryPath)) return { commands: [] };
-  return JSON.parse(await readFile(registryPath, "utf8")) as GlobalCommandRegistry;
+  const registry = JSON.parse(await readFile(registryPath, "utf8")) as GlobalCommandRegistry;
+  const changed = registry.commands.some((profile) => migrateCommandProfileNames(profile));
+  if (changed) await writeGlobalCommandRegistry(registry);
+  return registry;
 }
 
 export async function saveGlobalCommandProfile(profile: GlobalCommandProfile): Promise<void> {
@@ -27,10 +31,15 @@ export async function saveGlobalCommandProfile(profile: GlobalCommandProfile): P
   const index = registry.commands.findIndex((item) => item.command.name === profile.command.name);
   if (index === -1) registry.commands.push(profile);
   else registry.commands[index] = profile;
-  await mkdir(dirname(registryPath), { recursive: true });
-  await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+  for (const item of registry.commands) migrateCommandProfileNames(item);
+  await writeGlobalCommandRegistry(registry);
 }
 
 export async function readGlobalCommandProfiles(): Promise<GlobalCommandProfile[]> {
   return (await loadGlobalCommandRegistry()).commands;
+}
+
+async function writeGlobalCommandRegistry(registry: GlobalCommandRegistry): Promise<void> {
+  await mkdir(dirname(registryPath), { recursive: true });
+  await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
 }

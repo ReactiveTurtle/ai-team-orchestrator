@@ -4,6 +4,7 @@ import type { CommandConfig, EmployeeConfig, LoadedConfig, ReviewPolicyConfig, S
 import { fileExists, listFiles, readText, readYaml, writeText } from "./fs-utils.js";
 import { readGlobalCommandProfiles } from "./global-commands.js";
 import { readGlobalRoles, saveGlobalRoles } from "./global-roles.js";
+import { migrateLoadedConfigNames } from "./global-name-migration.js";
 
 export const AI_TEAM_DIR = ".ai-team";
 
@@ -55,6 +56,8 @@ export async function loadConfig(rootDir = process.cwd()): Promise<LoadedConfig>
   for (const [roleName, rolePrompt] of Object.entries(await readGlobalRoles())) {
     roles.set(roleName, rolePrompt);
   }
+
+  migrateLoadedConfigNames(commands, teams, employees);
 
   return { rootDir, aiTeamDir, commands, roles, principles, employees, teams, settings, reviewPolicy };
 }
