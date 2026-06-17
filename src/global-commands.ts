@@ -8,7 +8,7 @@ export type GlobalCommandProfile = {
   command: CommandConfig;
   team: TeamConfig;
   employees: EmployeeConfig[];
-  roles: Record<string, string>;
+  roles?: Record<string, string>;
 };
 
 export type GlobalCommandRegistry = {

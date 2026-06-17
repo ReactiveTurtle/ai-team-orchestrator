@@ -616,6 +616,13 @@ function handleProgress(event: RunProgressEvent, state: UiState, addLog: (messag
     return;
   }
 
+  if (event.type === "provider_event") {
+    if (event.event.type === "reasoning") state.reasoning = event.event.text;
+    if (event.event.type === "text") addLog(`{#a7f3d0-fg}provider{/} ${truncate(event.event.text, 180)}`);
+    if (event.event.type === "tool") addLog(`{#f6d365-fg}tool{/} ${event.event.tool ?? "tool"} · ${event.event.status ?? "event"}`);
+    return;
+  }
+
   addLog(`{#86efac-fg}run completed{/} ${event.runId} · ${event.status}`);
 }
 

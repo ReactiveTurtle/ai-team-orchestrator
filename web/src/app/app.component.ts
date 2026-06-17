@@ -55,11 +55,17 @@ type AppConfig = {
     provider?: { command?: string };
     ui?: { defaultCommand?: string };
   };
+  git?: { branch?: string };
 };
 
 type TaskEntry = { id: string; mtime: number };
 type TaskMessage = { role?: string; kind?: string; content?: string; step?: string; employee?: string; status?: string; reasoning?: string };
 type TimelineMessage = { role: string; content: string; kind: string };
+type ProviderEvent =
+  | { type: "reasoning"; text: string }
+  | { type: "text"; text: string }
+  | { type: "tool"; tool?: string; status?: string; title?: string; output?: string }
+  | { type: "step"; status: "start" | "finish"; reason?: string };
 
 @Component({
   selector: "app-root",
@@ -72,7 +78,7 @@ export class AppComponent {
 
   @ViewChild("timelineContainer") private timelineContainer?: ElementRef<HTMLElement>;
 
-  readonly screen = signal<"projects" | "workspace">("projects");
+  readonly screen = signal<"projects" | "workspace" | "command-editor">("projects");
   readonly projects = signal<ProjectEntry[]>([]);
   readonly activeProjectId = signal<string | undefined>(undefined);
   readonly config = signal<AppConfig | undefined>(undefined);
@@ -100,6 +106,11 @@ export class AppComponent {
   readonly taskListOpen = signal(false);
   readonly commandEditorOpen = signal(false);
   readonly commandListOpen = signal(false);
+  readonly selectedPipelineStepIndex = signal(0);
+  readonly draggedPipelineStepIndex = signal<number | undefined>(undefined);
+  readonly draggedEmployeeIndex = signal<number | undefined>(undefined);
+  readonly pipelineDropTargetIndex = signal<number | undefined>(undefined);
+  readonly selectedEditorItem = signal<{ type: "command" | "role" | "employee" | "step"; index?: number }>({ type: "command" });
 
   projectPath = "";
   providerCommand = "";
@@ -148,6 +159,9 @@ export class AppComponent {
     });
   });
   readonly canStop = computed(() => Boolean(this.currentRunId()));
+  readonly selectedRole = computed(() => this.selectedEditorItem().type === "role" ? this.commandDraftRoles[this.selectedEditorItem().index ?? -1] : undefined);
+  readonly selectedEmployee = computed(() => this.selectedEditorItem().type === "employee" ? this.commandDraftEmployees[this.selectedEditorItem().index ?? -1] : undefined);
+  readonly selectedStep = computed(() => this.selectedEditorItem().type === "step" ? this.commandDraftSteps[this.selectedEditorItem().index ?? -1] : undefined);
   readonly elapsedLabel = computed(() => {
     const startedAt = this.runStartedAt();
     if (!startedAt) return "-";
@@ -283,9 +297,9 @@ export class AppComponent {
       const data = await this.get<{ messages: TaskMessage[] }>(`/api/sessions/${encodeURIComponent(id)}`);
       this.taskId.set(id);
       this.timeline.set((data.messages ?? []).map((message) => ({
-        role: message.role === "assistant" ? (message.kind === "step_result" ? `результат ${message.step ?? "шага"}` : "ассистент") : message.role === "user" ? "вы" : "событие",
+        role: timelineRole(message),
         content: renderTaskMessage(message),
-        kind: message.role === "assistant" ? "assistant" : message.role === "user" ? "user" : "event"
+        kind: timelineKind(message)
       })));
       if (this.timeline().length === 0) this.chatEmptyText.set("Опишите, что нужно сделать. Команда начнёт работу после отправки.");
       this.scrollTimelineToBottom();
@@ -359,6 +373,18 @@ export class AppComponent {
   selectCommand(commandName: string): void {
     this.command.set(commandName);
     this.paletteOpen.set(false);
+    void this.openTaskListForCommand();
+  }
+
+  chooseCommandFromList(commandName: string): void {
+    this.command.set(commandName);
+    this.commandListOpen.set(false);
+    void this.openTaskListForCommand();
+  }
+
+  private async openTaskListForCommand(): Promise<void> {
+    await this.refreshTasks();
+    this.taskListOpen.set(true);
   }
 
   newCommand(): void {
@@ -367,7 +393,11 @@ export class AppComponent {
     this.commandDraftRoles = [{ name: "builder", prompt: "Опишите обязанности роли." }];
     this.commandDraftEmployees = [{ name: "employee-1", rolesText: "builder", backend: "opencode", model: "gpt-5.5" }];
     this.commandDraftSteps = [{ name: "work", employee: "employee-1", role: "builder" }];
-    this.commandEditorOpen.set(true);
+    this.selectedPipelineStepIndex.set(0);
+    this.selectedEditorItem.set({ type: "command" });
+    this.commandListOpen.set(false);
+    this.paletteOpen.set(false);
+    this.screen.set("command-editor");
   }
 
   editCommand(): void {
@@ -397,15 +427,136 @@ export class AppComponent {
       extra_instructions: employee.extra_instructions
     }));
     this.commandDraftSteps = Object.entries(team?.flow.steps ?? {}).map(([name, step]) => ({ name, employee: step.employee, role: step.role ?? employees.find((employee) => employee.name === step.employee)?.role ?? "" }));
-    this.commandEditorOpen.set(true);
+    this.selectedPipelineStepIndex.set(0);
+    this.selectedEditorItem.set({ type: "command" });
+    this.commandListOpen.set(false);
+    this.paletteOpen.set(false);
+    this.screen.set("command-editor");
   }
 
-  addRole(): void { this.commandDraftRoles.push({ name: "", prompt: "" }); }
-  removeRole(index: number): void { this.commandDraftRoles.splice(index, 1); }
-  addEmployee(): void { this.commandDraftEmployees.push({ name: "", rolesText: "", backend: "opencode", model: "gpt-5.5" }); }
-  removeEmployee(index: number): void { this.commandDraftEmployees.splice(index, 1); }
-  addStep(): void { this.commandDraftSteps.push({ name: "", employee: this.commandDraftEmployees[0]?.name ?? "", role: this.commandDraftRoles[0]?.name ?? "" }); }
-  removeStep(index: number): void { this.commandDraftSteps.splice(index, 1); }
+  addRole(): void {
+    this.commandDraftRoles.push({ name: "", prompt: "" });
+    this.selectedEditorItem.set({ type: "role", index: this.commandDraftRoles.length - 1 });
+  }
+
+  removeRole(index: number): void {
+    this.commandDraftRoles.splice(index, 1);
+    this.selectedEditorItem.set({ type: "command" });
+  }
+
+  addEmployee(): void {
+    this.commandDraftEmployees.push({ name: "", rolesText: "", backend: "opencode", model: "gpt-5.5" });
+    this.selectedEditorItem.set({ type: "employee", index: this.commandDraftEmployees.length - 1 });
+  }
+
+  removeEmployee(index: number): void {
+    this.commandDraftEmployees.splice(index, 1);
+    this.selectedEditorItem.set({ type: "command" });
+  }
+
+  addStep(): void {
+    this.commandDraftSteps.push({ name: "", employee: this.commandDraftEmployees[0]?.name ?? "", role: this.commandDraftRoles[0]?.name ?? "" });
+    this.selectPipelineStep(this.commandDraftSteps.length - 1);
+  }
+
+  removeStep(index: number): void {
+    this.commandDraftSteps.splice(index, 1);
+    this.selectedPipelineStepIndex.set(Math.max(0, Math.min(this.selectedPipelineStepIndex(), this.commandDraftSteps.length - 1)));
+    this.selectedEditorItem.set(this.commandDraftSteps.length > 0 ? { type: "step", index: this.selectedPipelineStepIndex() } : { type: "command" });
+  }
+
+  selectPipelineStep(index: number): void {
+    this.selectedPipelineStepIndex.set(index);
+    this.selectedEditorItem.set({ type: "step", index });
+  }
+
+  selectCommandSettings(): void { this.selectedEditorItem.set({ type: "command" }); }
+  selectRole(index: number): void { this.selectedEditorItem.set({ type: "role", index }); }
+  selectEmployee(index: number): void { this.selectedEditorItem.set({ type: "employee", index }); }
+
+  closeCommandEditor(): void {
+    this.screen.set("projects");
+    this.commandListOpen.set(true);
+  }
+
+  movePipelineStep(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    if (target < 0 || target >= this.commandDraftSteps.length) return;
+    this.reorderPipelineStep(index, target);
+  }
+
+  onPipelineDragStart(event: DragEvent, index: number): void {
+    this.draggedEmployeeIndex.set(undefined);
+    this.draggedPipelineStepIndex.set(index);
+    this.pipelineDropTargetIndex.set(index);
+    this.selectPipelineStep(index);
+    event.dataTransfer?.setData("application/x-ai-team-step-index", String(index));
+    event.dataTransfer?.setData("text/plain", String(index));
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  }
+
+  onEmployeeDragStart(event: DragEvent, index: number): void {
+    this.draggedPipelineStepIndex.set(undefined);
+    this.draggedEmployeeIndex.set(index);
+    this.pipelineDropTargetIndex.set(undefined);
+    event.dataTransfer?.setData("application/x-ai-team-employee-index", String(index));
+    event.dataTransfer?.setData("text/plain", this.commandDraftEmployees[index]?.name ?? "");
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+  }
+
+  onPipelineDragOver(event: DragEvent, index: number): void {
+    if (this.draggedPipelineStepIndex() === undefined && this.draggedEmployeeIndex() === undefined) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = this.draggedEmployeeIndex() === undefined ? "move" : "copy";
+    this.pipelineDropTargetIndex.set(index);
+  }
+
+  onPipelineDrop(event: DragEvent, index: number): void {
+    event.preventDefault();
+    const employeeIndex = this.draggedEmployeeIndex();
+    const from = this.draggedPipelineStepIndex();
+    this.clearPipelineDragState();
+    if (employeeIndex !== undefined) {
+      this.assignEmployeeToStep(employeeIndex, index);
+      return;
+    }
+    if (from === undefined || from === index) return;
+    this.reorderPipelineStep(from, index);
+  }
+
+  clearPipelineDragState(): void {
+    this.draggedPipelineStepIndex.set(undefined);
+    this.draggedEmployeeIndex.set(undefined);
+    this.pipelineDropTargetIndex.set(undefined);
+  }
+
+  private assignEmployeeToStep(employeeIndex: number, stepIndex: number): void {
+    const employee = this.commandDraftEmployees[employeeIndex];
+    const step = this.commandDraftSteps[stepIndex];
+    if (!employee || !step) return;
+    step.employee = employee.name;
+    if (!step.role) step.role = employee.rolesText.split(",").map((role) => role.trim()).filter(Boolean)[0] ?? "";
+    this.selectPipelineStep(stepIndex);
+  }
+
+  private reorderPipelineStep(index: number, target: number): void {
+    if (target < 0 || target >= this.commandDraftSteps.length || index === target) return;
+    const next = [...this.commandDraftSteps];
+    const [step] = next.splice(index, 1);
+    next.splice(target, 0, step);
+    this.commandDraftSteps = next;
+    const selected = this.selectedEditorItem();
+    if (selected.type !== "step") {
+      this.selectedPipelineStepIndex.set(target);
+      return;
+    }
+    const selectedIndex = selected.index ?? this.selectedPipelineStepIndex();
+    let nextSelectedIndex = selectedIndex;
+    if (selectedIndex === index) nextSelectedIndex = target;
+    else if (index < selectedIndex && selectedIndex <= target) nextSelectedIndex = selectedIndex - 1;
+    else if (target <= selectedIndex && selectedIndex < index) nextSelectedIndex = selectedIndex + 1;
+    this.selectPipelineStep(nextSelectedIndex);
+  }
 
   async saveCommand(): Promise<void> {
     await this.request(async () => {
@@ -431,34 +582,43 @@ export class AppComponent {
         : await this.post<AppConfig>("/api/commands", body);
       this.config.set(config);
       this.command.set(body.name);
-      this.commandEditorOpen.set(false);
+      this.screen.set("projects");
+      this.commandListOpen.set(true);
     });
   }
 
   private attachRunEvents(runId: string): void {
     const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`);
     source.onmessage = (event) => {
-      const payload = JSON.parse(event.data) as Record<string, string>;
+      const payload = JSON.parse(event.data) as Record<string, unknown>;
       if (payload["type"] === "step_started") {
-        this.currentStep.set(payload["step"]);
-        this.worker.set(payload["employee"] ?? "исполнитель");
-        this.workerDetail.set(`${payload["step"]} · ${payload["role"]}`);
-        this.processNote.set(`Сейчас работает ${payload["employee"]}. Роль: ${payload["role"]}. Шаг: ${payload["step"]}.`);
-        this.pushRunMessage("событие", `${payload["employee"]} начал шаг ${payload["step"]}`, "event");
+        const step = String(payload["step"] ?? "");
+        const employee = String(payload["employee"] ?? "исполнитель");
+        const role = String(payload["role"] ?? "");
+        this.currentStep.set(step);
+        this.worker.set(employee);
+        this.workerDetail.set(`${step} · ${role}`);
+        this.processNote.set(`Сейчас работает ${employee}. Роль: ${role}. Шаг: ${step}.`);
+        this.pushRunMessage("событие", `${employee} начал шаг ${step}`, "event");
+      } else if (payload["type"] === "provider_event") {
+        this.handleProviderEvent(payload["event"] as ProviderEvent);
       } else if (payload["type"] === "step_completed") {
         const next = new Set(this.doneSteps());
-        next.add(payload["step"] ?? "");
+        const step = String(payload["step"] ?? "");
+        const employee = String(payload["employee"] ?? "исполнитель");
+        const status = String(payload["status"] ?? "");
+        next.add(step);
         this.doneSteps.set(next);
-        this.processNote.set(`${payload["employee"]} завершил шаг ${payload["step"]} со статусом ${payload["status"]}.`);
-        this.pushRunMessage("событие", `${payload["employee"]} завершил шаг ${payload["step"]} · ${payload["status"]}`, "event");
-        if (payload["summary"]) {
+        this.processNote.set(`${employee} завершил шаг ${step} со статусом ${status}.`);
+        this.pushRunMessage("событие", `${employee} завершил шаг ${step} · ${status}`, "event");
+        if (typeof payload["summary"] === "string") {
           this.providerResult.set(payload["summary"]);
-          this.pushRunMessage(`результат ${payload["step"]}`, payload["summary"], "assistant");
+          this.pushRunMessage(`результат ${step}`, payload["summary"], "assistant");
         }
-        if (payload["reasoning"]) this.publicReasoning.set(payload["reasoning"]);
+        if (typeof payload["reasoning"] === "string") this.publicReasoning.set(payload["reasoning"]);
       } else if (payload["type"] === "result") {
-        const reasoning = payload["reasoning"] || "Provider не вернул Public Reasoning.";
-        const summary = payload["summary"];
+        const reasoning = typeof payload["reasoning"] === "string" ? payload["reasoning"] : "Provider не вернул Public Reasoning.";
+        const summary = typeof payload["summary"] === "string" ? payload["summary"] : undefined;
         this.publicReasoning.set(reasoning);
         if (summary) {
           this.providerResult.set(summary);
@@ -474,13 +634,14 @@ export class AppComponent {
         this.currentStep.set(undefined);
         this.worker.set("ожидание");
         this.workerDetail.set("");
-        this.processNote.set(`Запуск завершён со статусом ${payload["status"] ?? "done"}.`);
+        const status = String(payload["status"] ?? "done");
+        this.processNote.set(`Запуск завершён со статусом ${status}.`);
         this.runStartedAt.set(undefined);
-        this.lastRun.set({ runId: payload["runId"] ?? runId, status: payload["status"] ?? "done" });
+        this.lastRun.set({ runId: String(payload["runId"] ?? runId), status });
         source.close();
         void this.refreshTasks();
       } else if (payload["type"] === "error") {
-        this.pushRunMessage("ошибка", payload["message"] ?? "Неизвестная ошибка", "event");
+        this.pushRunMessage("ошибка", String(payload["message"] ?? "Неизвестная ошибка"), "event");
         this.worker.set("ожидание");
         this.processNote.set("Запуск остановлен или завершился ошибкой.");
         this.runStartedAt.set(undefined);
@@ -505,6 +666,30 @@ export class AppComponent {
   private pushRunMessage(role: string, content: string, kind: string): void {
     if (this.currentRunTaskId() !== this.taskId()) return;
     this.pushMessage(role, content, kind);
+  }
+
+  private handleProviderEvent(event: ProviderEvent): void {
+    if (event.type === "reasoning") {
+      this.publicReasoning.set(event.text);
+      this.pushRunMessage("рассуждение", event.text, "reasoning");
+      return;
+    }
+    if (event.type === "text") {
+      this.providerResult.set(event.text);
+      this.pushRunMessage("ответ", event.text, "assistant");
+      return;
+    }
+    if (event.type === "tool") {
+      const content = [event.tool, event.status, event.title].filter(Boolean).join(" · ") || "OpenCode tool event";
+      this.processNote.set(content);
+      this.pushRunMessage("инструмент", content, "event");
+      return;
+    }
+    if (event.type === "step") {
+      const content = event.reason ? `OpenCode step ${event.status}: ${event.reason}` : `OpenCode step ${event.status}`;
+      this.processNote.set(content);
+      this.pushRunMessage("opencode", content, "event");
+    }
   }
 
   private scrollTimelineToBottom(): void {
@@ -561,4 +746,22 @@ function renderTaskMessage(message: TaskMessage): string {
     ].join("").trim();
   }
   return message.content ?? "";
+}
+
+function timelineRole(message: TaskMessage): string {
+  if (message.kind === "step_result") return `результат ${message.step ?? "шага"}`;
+  if (message.kind === "provider_reasoning") return "рассуждение";
+  if (message.kind === "provider_text") return "ответ";
+  if (message.kind === "provider_tool") return "инструмент";
+  if (message.role === "assistant") return "ассистент";
+  if (message.role === "user") return "вы";
+  return "событие";
+}
+
+function timelineKind(message: TaskMessage): string {
+  if (message.kind === "provider_reasoning") return "reasoning";
+  if (message.kind === "provider_text" || message.kind === "step_result") return "assistant";
+  if (message.role === "assistant") return "assistant";
+  if (message.role === "user") return "user";
+  return "event";
 }

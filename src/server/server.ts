@@ -6,7 +6,8 @@ import { dirname, basename, extname, join, normalize, resolve } from "node:path"
 import { fileURLToPath } from "node:url";
 import { loadConfig, saveSettings } from "../config.js";
 import { saveGlobalCommandProfile, type GlobalCommandProfile } from "../global-commands.js";
-import type { CommandConfig, EmployeeConfig, TeamConfig } from "../types.js";
+import { saveGlobalRoles } from "../global-roles.js";
+import type { CommandConfig, EmployeeConfig, ProviderRunEvent, TeamConfig } from "../types.js";
 import { type RunProgressEvent, runConfiguredCommand } from "../engine.js";
 import { addProject, bootstrapProjectRegistry, getActiveProjectRoot, loadProjectRegistry, removeProject, selectProject } from "./project-store.js";
 
@@ -141,8 +142,19 @@ async function getConfig(rootDir: string): Promise<unknown> {
     teams: [...config.teams.values()],
     employees: [...config.employees.values()],
     roles: Object.fromEntries(config.roles),
-    settings: config.settings
+    settings: config.settings,
+    git: { branch: await currentGitBranch(rootDir) }
   };
+}
+
+async function currentGitBranch(rootDir: string): Promise<string | undefined> {
+  return new Promise((resolveBranch) => {
+    const child = spawn("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: rootDir, windowsHide: true });
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
+    child.on("error", () => resolveBranch(undefined));
+    child.on("close", (code) => resolveBranch(code === 0 ? output.trim() || undefined : undefined));
+  });
 }
 
 async function saveCommand(rootDir: string, command: CommandProfilePayload, originalName?: string): Promise<void> {
@@ -168,11 +180,11 @@ async function saveCommand(rootDir: string, command: CommandProfilePayload, orig
     ? command.employees
     : employeeNames.map((employeeName) => config.employees.get(employeeName)).filter(Boolean) as EmployeeConfig[];
   const roles = command.roles ?? Object.fromEntries(employees.map((employee) => [employee.role, config.roles.get(employee.role) ?? ""]));
+  await saveGlobalRoles(roles);
   const profile: GlobalCommandProfile = {
     command: saved,
     team: team as TeamConfig,
-    employees,
-    roles
+    employees
   };
   await saveGlobalCommandProfile(profile);
 }
@@ -207,6 +219,19 @@ async function startRun(rootDir: string, command: string, input: string, session
               step: event.step,
               employee: event.employee,
               content: `${event.employee} начал шаг ${event.step}`
+            }));
+          }
+          if (event.type === "provider_event") {
+            const content = renderProviderEvent(event.event);
+            transcriptWrites.push(appendSession(rootDir, sessionId, {
+              role: event.event.type === "text" ? "assistant" : "event",
+              kind: `provider_${event.event.type}`,
+              command,
+              runId: event.runId,
+              step: event.step,
+              employee: event.employee,
+              event: event.event,
+              content
             }));
           }
           if (event.type === "step_completed") {
@@ -253,6 +278,14 @@ async function startRun(rootDir: string, command: string, input: string, session
 function publish(record: RunRecord, event: RunProgressEvent | Record<string, unknown>): void {
   record.events.push(event);
   for (const client of record.clients) writeSse(client, event);
+}
+
+function renderProviderEvent(event: ProviderRunEvent): string {
+  if (event.type === "reasoning") return event.text ?? "";
+  if (event.type === "text") return event.text ?? "";
+  if (event.type === "tool") return [event.tool, event.status, event.title].filter(Boolean).join(" · ") || "Tool event";
+  if (event.type === "step") return event.reason ? `OpenCode step ${event.status}: ${event.reason}` : `OpenCode step ${event.status}`;
+  return JSON.stringify(event);
 }
 
 function attachRunEvents(res: ServerResponse, runId: string): void {

@@ -2,11 +2,12 @@ import { join } from "node:path";
 import { loadConfig, validateConfig } from "./config.js";
 import { createBackends } from "./backends/index.js";
 import { createRunId, createRunStore } from "./state-store.js";
-import type { CommandConfig, EmployeeRunResult, RunState, TeamStepConfig } from "./types.js";
+import type { CommandConfig, EmployeeRunResult, ProviderRunEvent, RunState, TeamStepConfig } from "./types.js";
 
 export type RunProgressEvent =
   | { type: "run_started"; runId: string; team: string; command?: string; task: string }
   | { type: "step_started"; runId: string; step: string; employee: string; role: string; iteration: number }
+  | { type: "provider_event"; runId: string; step: string; employee: string; role: string; iteration: number; event: ProviderRunEvent }
   | { type: "step_completed"; runId: string; step: string; employee: string; role: string; iteration: number; status: EmployeeRunResult["status"]; next?: string; summary: string; reasoning?: string; artifact?: string }
   | { type: "run_completed"; runId: string; status: RunState["status"]; statePath: string; artifactsDir: string };
 
@@ -177,7 +178,16 @@ async function runStep(
     employee: { ...employee, role: roleName },
     state,
     reviewPolicy: config.reviewPolicy,
-    abortSignal: options.abortSignal
+    abortSignal: options.abortSignal,
+    onProviderEvent: (event) => options.onEvent?.({
+      type: "provider_event",
+      runId: state.run_id,
+      step: stepName,
+      employee: employee.name,
+      role: roleName,
+      iteration: state.iteration,
+      event
+    })
   });
 }
 

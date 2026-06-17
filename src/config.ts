@@ -1,7 +1,9 @@
+import { rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { CommandConfig, EmployeeConfig, LoadedConfig, ReviewPolicyConfig, SettingsConfig, TeamConfig } from "./types.js";
 import { fileExists, listFiles, readText, readYaml, writeText } from "./fs-utils.js";
 import { readGlobalCommandProfiles } from "./global-commands.js";
+import { readGlobalRoles, saveGlobalRoles } from "./global-roles.js";
 
 export const AI_TEAM_DIR = ".ai-team";
 
@@ -17,14 +19,11 @@ export async function loadConfig(rootDir = process.cwd()): Promise<LoadedConfig>
   const settings = fileExists(settingsPath)
     ? JSON.parse(await readText(settingsPath)) as SettingsConfig
     : {};
+  await migrateLocalRolesToGlobal(aiTeamDir);
 
   for (const file of await listFiles(join(aiTeamDir, "commands"), ".yaml")) {
     const command = await readYaml<CommandConfig>(file);
     commands.set(command.name, command);
-  }
-
-  for (const file of await listFiles(join(aiTeamDir, "roles"), ".md")) {
-    roles.set(basename(file, ".md"), await readText(file));
   }
 
   for (const file of await listFiles(join(aiTeamDir, "principles"), ".md")) {
@@ -50,10 +49,23 @@ export async function loadConfig(rootDir = process.cwd()): Promise<LoadedConfig>
     commands.set(profile.command.name, profile.command);
     teams.set(profile.team.name, profile.team);
     for (const employee of profile.employees) employees.set(employee.name, employee);
-    for (const [roleName, rolePrompt] of Object.entries(profile.roles)) roles.set(roleName, rolePrompt);
+    for (const [roleName, rolePrompt] of Object.entries(profile.roles ?? {})) roles.set(roleName, rolePrompt);
+  }
+
+  for (const [roleName, rolePrompt] of Object.entries(await readGlobalRoles())) {
+    roles.set(roleName, rolePrompt);
   }
 
   return { rootDir, aiTeamDir, commands, roles, principles, employees, teams, settings, reviewPolicy };
+}
+
+async function migrateLocalRolesToGlobal(aiTeamDir: string): Promise<void> {
+  const roleFiles = await listFiles(join(aiTeamDir, "roles"), ".md");
+  if (roleFiles.length === 0) return;
+  const migratedRoles: Record<string, string> = {};
+  for (const file of roleFiles) migratedRoles[basename(file, ".md")] = await readText(file);
+  await saveGlobalRoles(migratedRoles);
+  await Promise.all(roleFiles.map((file) => rm(file, { force: true })));
 }
 
 export async function saveSettings(settings: SettingsConfig, rootDir = process.cwd()): Promise<string> {
@@ -81,7 +93,7 @@ export function findWorkspaceRoot(startDir = process.cwd()): string {
 export function validateConfig(config: LoadedConfig): string[] {
   const errors: string[] = [];
 
-  if (config.roles.size === 0) errors.push("No roles found in .ai-team/roles");
+  if (config.roles.size === 0) errors.push("No roles found in global ai-team roles");
   if (config.employees.size === 0) errors.push("No employees found in .ai-team/employees");
   if (config.teams.size === 0) errors.push("No teams found in .ai-team/teams");
 

@@ -93,7 +93,14 @@ export type EmployeeRunInput = {
   state: RunState;
   reviewPolicy?: ReviewPolicyConfig;
   abortSignal?: AbortSignal;
+  onProviderEvent?: (event: ProviderRunEvent) => void;
 };
+
+export type ProviderRunEvent =
+  | { type: "reasoning"; text: string }
+  | { type: "text"; text: string }
+  | { type: "tool"; tool?: string; status?: string; title?: string; output?: string }
+  | { type: "step"; status: "start" | "finish"; reason?: string };
 
 export type EmployeeRunResult = {
   status: "approved" | "needs_fix" | "done";
