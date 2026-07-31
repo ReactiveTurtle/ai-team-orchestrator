@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadConfig, saveSettings } from "../config.js";
 import { addProject, bootstrapProjectRegistry, loadProjectRegistry, removeProject, selectProject } from "./project-store.js";
 
 type ServerOptions = {
@@ -49,6 +50,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (method === "GET" && !url.pathname.startsWith("/api/")) return serveWebAsset(res, url.pathname);
   if (method === "GET" && url.pathname === "/api/projects") return sendJson(res, await loadProjectRegistry());
+  if (method === "GET" && url.pathname === "/api/provider") return sendJson(res, await getProviderSettings(url));
+  if (method === "POST" && url.pathname === "/api/provider") return sendJson(res, await saveProviderSettings(url, await readJson<{ command?: string }>(req)));
   if (method === "POST" && url.pathname === "/api/projects") {
     const body = await readJson<{ path: string; name?: string }>(req);
     if (!body.path) throw new Error("Укажите путь к проекту.");
@@ -65,6 +68,27 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   res.statusCode = 404;
   res.end("Not found");
+}
+
+async function getProviderSettings(url: URL): Promise<{ provider: "opencode"; command?: string }> {
+  const config = await loadConfig(await projectRootFromUrl(url));
+  return { provider: "opencode", command: config.settings.provider?.command };
+}
+
+async function saveProviderSettings(url: URL, body: { command?: string }): Promise<{ provider: "opencode"; command?: string }> {
+  const rootDir = await projectRootFromUrl(url);
+  const config = await loadConfig(rootDir);
+  const command = body.command?.trim() || undefined;
+  await saveSettings({ ...config.settings, provider: { ...config.settings.provider, command } }, rootDir);
+  return { provider: "opencode", command };
+}
+
+async function projectRootFromUrl(url: URL): Promise<string> {
+  const projectId = url.searchParams.get("projectId");
+  const registry = await loadProjectRegistry();
+  const project = registry.projects.find((item) => item.id === projectId) ?? registry.projects.find((item) => item.id === registry.activeProjectId) ?? registry.projects[0];
+  if (!project) throw new Error("Добавьте проект перед настройкой provider.");
+  return project.path;
 }
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {

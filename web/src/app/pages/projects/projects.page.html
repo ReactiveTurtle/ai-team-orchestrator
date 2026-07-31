@@ -1,9 +1,10 @@
-<section class="projects-page">
+<section class="projects-page" *ngIf="!openedProject; else projectView">
   <header class="topbar">
     <h1>Проекты</h1>
     <div class="actions">
       <app-button variant="primary" (pressed)="addFormOpenChange.emit(!addFormOpen)">Добавить</app-button>
       <app-button (pressed)="refreshProjects.emit()">Обновить</app-button>
+      <button class="gear" type="button" aria-label="Настройки" (click)="openSettings.emit()">⚙</button>
     </div>
   </header>
 
@@ -15,12 +16,9 @@
   <div class="notice error" *ngIf="error">{{ error }}</div>
 
   <div class="list" *ngIf="projects.length > 0; else emptyProjects">
-    <article class="project" *ngFor="let project of projects" [class.active]="project.id === activeProjectId" (click)="openProject.emit(project)">
+    <article class="project" *ngFor="let project of projects">
       <div class="project-info">
-        <div class="project-name">
-          {{ project.name }}
-          <span *ngIf="project.id === activeProjectId">открыт</span>
-        </div>
+        <div class="project-name">{{ project.name }}</div>
         <div class="project-path">{{ project.path }}</div>
       </div>
       <div class="project-buttons">
@@ -34,3 +32,55 @@
     <div class="empty">Нет проектов</div>
   </ng-template>
 </section>
+
+<ng-template #projectView>
+  <section class="projects-page">
+    <header class="topbar">
+      <div>
+        <h1>{{ openedProject?.name }}</h1>
+        <div class="project-path">{{ openedProject?.path }}</div>
+      </div>
+      <div class="actions">
+        <button class="gear" type="button" aria-label="Настройки" (click)="openSettings.emit()">⚙</button>
+        <app-button (pressed)="closeProject.emit()">Назад</app-button>
+      </div>
+    </header>
+
+    <div class="sections">
+      <section class="panel">
+        <h2>Чаты</h2>
+        <div class="empty">Пока нет</div>
+      </section>
+      <section class="panel">
+        <h2>Задачи</h2>
+        <div class="empty">Пока нет</div>
+      </section>
+    </div>
+  </section>
+</ng-template>
+
+<div class="settings-backdrop" *ngIf="settingsOpen" (click)="closeSettings.emit()">
+  <section class="settings" (click)="$event.stopPropagation()">
+    <header class="settings-head">
+      <h2>Настройки</h2>
+      <button class="icon" type="button" aria-label="Закрыть" (click)="closeSettings.emit()">×</button>
+    </header>
+
+    <div class="muted">{{ settingsProject?.name || 'Проект не выбран' }}</div>
+
+    <label class="provider">
+      <span>Provider</span>
+      <strong>opencode</strong>
+    </label>
+
+    <label class="provider">
+      <span>Command</span>
+      <input [ngModel]="providerCommand" (ngModelChange)="providerCommandChange.emit($event)" placeholder="opencode run" />
+    </label>
+
+    <div class="settings-actions">
+      <app-button variant="primary" (pressed)="saveProvider.emit()">Сохранить</app-button>
+      <app-button (pressed)="clearProvider.emit()">Сбросить</app-button>
+    </div>
+  </section>
+</div>

@@ -13,15 +13,24 @@ import type { ProjectEntry } from "../../shared/models/app.models";
 })
 export class ProjectsPage {
   @Input() projects: ProjectEntry[] = [];
-  @Input() activeProjectId?: string;
+  @Input() openedProject?: ProjectEntry;
+  @Input() settingsOpen = false;
+  @Input() settingsProject?: ProjectEntry;
   @Input() addFormOpen = false;
   @Input() projectPath = "";
+  @Input() providerCommand = "opencode run";
   @Input() error?: string;
 
   @Output() addFormOpenChange = new EventEmitter<boolean>();
   @Output() projectPathChange = new EventEmitter<string>();
+  @Output() providerCommandChange = new EventEmitter<string>();
   @Output() refreshProjects = new EventEmitter<void>();
   @Output() addProject = new EventEmitter<void>();
   @Output() openProject = new EventEmitter<ProjectEntry>();
+  @Output() closeProject = new EventEmitter<void>();
+  @Output() openSettings = new EventEmitter<void>();
+  @Output() closeSettings = new EventEmitter<void>();
+  @Output() saveProvider = new EventEmitter<void>();
+  @Output() clearProvider = new EventEmitter<void>();
   @Output() removeProject = new EventEmitter<{ project: ProjectEntry; event: Event }>();
 }

@@ -1,8 +1,8 @@
 import { CommonModule } from "@angular/common";
 import { HttpClient } from "@angular/common/http";
-import { Component, inject, signal } from "@angular/core";
+import { Component, computed, inject, signal } from "@angular/core";
 import { ProjectsPage } from "./pages/projects/projects.page";
-import type { ProjectEntry, ProjectRegistry } from "./shared/models/app.models";
+import type { ProjectEntry, ProjectRegistry, ProviderSettings } from "./shared/models/app.models";
 
 @Component({
   selector: "app-root",
@@ -14,12 +14,16 @@ export class AppComponent {
   private readonly http = inject(HttpClient);
 
   readonly projects = signal<ProjectEntry[]>([]);
-  readonly activeProjectId = signal<string | undefined>(undefined);
+  readonly openedProject = signal<ProjectEntry | undefined>(undefined);
+  readonly settingsOpen = signal(false);
   readonly error = signal<string | undefined>(undefined);
   readonly busy = signal(false);
   readonly addFormOpen = signal(false);
 
   projectPath = "";
+  providerCommand = "opencode run";
+
+  readonly settingsProject = computed(() => this.openedProject() ?? this.projects()[0]);
 
   constructor() {
     void this.refreshProjects();
@@ -46,10 +50,39 @@ export class AppComponent {
     });
   }
 
-  async openProject(project: ProjectEntry): Promise<void> {
+  openProject(project: ProjectEntry): void {
+    this.openedProject.set(project);
+    this.error.set(undefined);
+  }
+
+  closeProject(): void {
+    this.openedProject.set(undefined);
+  }
+
+  async openSettings(): Promise<void> {
+    this.settingsOpen.set(true);
     await this.request(async () => {
-      const registry = await this.post<ProjectRegistry>(`/api/projects/${encodeURIComponent(project.id)}/select`, {});
-      this.applyRegistry(registry);
+      const settings = await this.get<ProviderSettings>(`/api/provider${this.projectQuery()}`);
+      this.providerCommand = settings.command || "opencode run";
+    });
+  }
+
+  closeSettings(): void {
+    this.settingsOpen.set(false);
+  }
+
+  async saveProvider(): Promise<void> {
+    await this.request(async () => {
+      const settings = await this.post<ProviderSettings>(`/api/provider${this.projectQuery()}`, { command: this.providerCommand });
+      this.providerCommand = settings.command || "opencode run";
+      this.settingsOpen.set(false);
+    });
+  }
+
+  async clearProvider(): Promise<void> {
+    await this.request(async () => {
+      await this.post<ProviderSettings>(`/api/provider${this.projectQuery()}`, { command: "" });
+      this.providerCommand = "opencode run";
     });
   }
 
@@ -59,12 +92,17 @@ export class AppComponent {
     await this.request(async () => {
       const registry = await this.delete<ProjectRegistry>(`/api/projects/${encodeURIComponent(project.id)}`);
       this.applyRegistry(registry);
+      if (this.openedProject()?.id === project.id) this.openedProject.set(undefined);
     });
   }
 
   private applyRegistry(registry: ProjectRegistry): void {
     this.projects.set(registry.projects ?? []);
-    this.activeProjectId.set(registry.activeProjectId ?? registry.projects?.[0]?.id);
+  }
+
+  private projectQuery(): string {
+    const project = this.settingsProject();
+    return project ? `?projectId=${encodeURIComponent(project.id)}` : "";
   }
 
   private async request<T>(callback: () => Promise<T>): Promise<T | undefined> {

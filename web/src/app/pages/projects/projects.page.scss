@@ -2,21 +2,33 @@
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 h1 { margin: 0; font-size: 28px; }
 .actions, .project-buttons { display: flex; gap: 8px; }
+.gear, .icon { border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); cursor: pointer; }
+.gear { width: 36px; height: 36px; font-size: 17px; }
+.icon { width: 32px; height: 32px; font-size: 20px; }
 .add-project { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 12px; }
 input { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: #fff; color: var(--text); }
 .list { display: grid; gap: 8px; }
 .project { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: #fff; cursor: pointer; }
-.project.active { border-color: var(--accent); }
 .project-name { font-weight: 700; }
-.project-name span { margin-left: 6px; color: var(--accent); font-size: 12px; font-weight: 600; }
 .project-path { margin-top: 2px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .notice, .empty { border: 1px solid var(--border); border-radius: 10px; padding: 12px; color: var(--muted); background: #fff; }
 .notice { margin-bottom: 12px; }
 .notice.error { border-color: #d8a1a1; color: var(--danger); }
+.sections { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.panel { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: #fff; }
+h2 { margin: 0 0 10px; font-size: 18px; }
+.settings-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .22); display: grid; justify-content: end; z-index: 10; }
+.settings { width: min(360px, 100vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); padding: 18px; display: grid; align-content: start; gap: 14px; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-head h2 { margin: 0; }
+.muted { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.provider { display: grid; gap: 6px; }
+.provider span { color: var(--muted); font-size: 13px; }
+.settings-actions { display: flex; gap: 8px; }
 
 @media (max-width: 640px) {
   .projects-page { padding: 16px; }
-  .topbar, .project { align-items: stretch; grid-template-columns: 1fr; }
+  .topbar, .project, .sections { align-items: stretch; grid-template-columns: 1fr; }
   .topbar { display: grid; }
   .actions, .project-buttons { flex-wrap: wrap; }
 }
