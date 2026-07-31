@@ -20,7 +20,6 @@ export class ProjectsPage {
 
   @Output() addFormOpenChange = new EventEmitter<boolean>();
   @Output() projectPathChange = new EventEmitter<string>();
-  @Output() openCommands = new EventEmitter<void>();
   @Output() refreshProjects = new EventEmitter<void>();
   @Output() addProject = new EventEmitter<void>();
   @Output() openProject = new EventEmitter<ProjectEntry>();

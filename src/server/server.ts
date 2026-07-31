@@ -1,15 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
-import { appendFile, mkdir, readFile, readdir, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, basename, extname, join, normalize, resolve } from "node:path";
+import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, saveSettings } from "../config.js";
-import { saveGlobalCommandProfile, type GlobalCommandProfile } from "../global-commands.js";
-import { saveGlobalRoles } from "../global-roles.js";
-import type { CommandConfig, EmployeeConfig, ProviderRunEvent, TeamConfig } from "../types.js";
-import { type RunProgressEvent, runConfiguredCommand } from "../engine.js";
-import { addProject, bootstrapProjectRegistry, getActiveProjectRoot, loadProjectRegistry, removeProject, selectProject } from "./project-store.js";
+import { addProject, bootstrapProjectRegistry, loadProjectRegistry, removeProject, selectProject } from "./project-store.js";
 
 type ServerOptions = {
   host?: string;
@@ -18,23 +13,6 @@ type ServerOptions = {
   rootDir?: string;
 };
 
-type RunRecord = {
-  runId: string;
-  events: unknown[];
-  clients: Set<ServerResponse>;
-  abortController: AbortController;
-  done: boolean;
-  started: Promise<void>;
-  resolveStarted: () => void;
-};
-
-type CommandProfilePayload = CommandConfig & {
-  team_config?: TeamConfig;
-  employees?: EmployeeConfig[];
-  roles?: Record<string, string>;
-};
-
-const runs = new Map<string, RunRecord>();
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "web", "browser");
 
 export async function startServer(options: ServerOptions = {}): Promise<{ url: string; close: () => Promise<void> }> {
@@ -48,9 +26,9 @@ export async function startServer(options: ServerOptions = {}): Promise<{ url: s
     void handleRequest(req, res).catch((error: unknown) => sendError(res, error));
   });
 
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolveListen, reject) => {
     server.once("error", reject);
-    server.listen(port, host, () => resolve());
+    server.listen(port, host, () => resolveListen());
   });
 
   const address = server.address();
@@ -61,7 +39,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{ url: s
 
   return {
     url,
-    close: () => new Promise((resolve) => server.close(() => resolve()))
+    close: () => new Promise((resolveClose) => server.close(() => resolveClose()))
   };
 }
 
@@ -73,7 +51,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (method === "GET" && url.pathname === "/api/projects") return sendJson(res, await loadProjectRegistry());
   if (method === "POST" && url.pathname === "/api/projects") {
     const body = await readJson<{ path: string; name?: string }>(req);
-    if (!body.path) throw new Error("Project path is required");
+    if (!body.path) throw new Error("Укажите путь к проекту.");
     return sendJson(res, await addProject(body.path, body.name));
   }
   if (method === "POST" && url.pathname.startsWith("/api/projects/") && url.pathname.endsWith("/select")) {
@@ -85,293 +63,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return sendJson(res, await removeProject(id));
   }
 
-  const rootDir = await getActiveProjectRoot();
-  if (method === "GET" && url.pathname === "/api/config") return sendJson(res, await getConfig(rootDir));
-  if (method === "POST" && url.pathname === "/api/commands") {
-    const body = await readJson<CommandProfilePayload>(req);
-    await saveCommand(rootDir, body);
-    return sendJson(res, await getConfig(rootDir));
-  }
-  if (method === "PUT" && url.pathname.startsWith("/api/commands/")) {
-    const originalName = decodeURIComponent(url.pathname.slice("/api/commands/".length));
-    const body = await readJson<CommandProfilePayload>(req);
-    await saveCommand(rootDir, body, originalName);
-    return sendJson(res, await getConfig(rootDir));
-  }
-  if (method === "GET" && url.pathname === "/api/provider") {
-    const config = await loadConfig(rootDir);
-    return sendJson(res, { provider: config.settings.provider ?? {} });
-  }
-  if (method === "GET" && url.pathname === "/api/sessions") return sendJson(res, { sessions: await listSessions(rootDir) });
-  if (method === "POST" && url.pathname === "/api/sessions") return sendJson(res, { session: await createSession(rootDir) });
-  if (method === "GET" && url.pathname.startsWith("/api/sessions/")) {
-    const id = decodeURIComponent(url.pathname.slice("/api/sessions/".length));
-    const offset = optionalInteger(url.searchParams.get("offset"));
-    const limit = optionalInteger(url.searchParams.get("limit"));
-    return sendJson(res, { id, ...await readSession(rootDir, id, { offset, limit }) });
-  }
-  if (method === "POST" && url.pathname === "/api/provider") {
-    const body = await readJson<{ command?: string }>(req);
-    const config = await loadConfig(rootDir);
-    config.settings.provider = { ...config.settings.provider, command: body.command || undefined };
-    await saveSettings(config.settings, rootDir);
-    return sendJson(res, { settings: config.settings });
-  }
-  if (method === "POST" && url.pathname === "/api/runs") {
-    const body = await readJson<{ command: string; input: string; sessionId?: string }>(req);
-    const record = await startRun(rootDir, body.command, body.input, body.sessionId);
-    return sendJson(res, { runId: record.runId });
-  }
-  if (method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/events")) {
-    const runId = decodeURIComponent(url.pathname.slice("/api/runs/".length, -"/events".length));
-    return attachRunEvents(res, runId);
-  }
-  if (method === "POST" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/stop")) {
-    const runId = decodeURIComponent(url.pathname.slice("/api/runs/".length, -"/stop".length));
-    const record = runs.get(runId);
-    record?.abortController.abort();
-    return sendJson(res, { stopped: Boolean(record) });
-  }
-
   res.statusCode = 404;
   res.end("Not found");
-}
-
-async function getConfig(rootDir: string): Promise<unknown> {
-  const config = await loadConfig(rootDir);
-  return {
-    commands: [...config.commands.values()],
-    teams: [...config.teams.values()],
-    employees: [...config.employees.values()],
-    roles: Object.fromEntries(config.roles),
-    settings: config.settings,
-    git: { branch: await currentGitBranch(rootDir) }
-  };
-}
-
-async function currentGitBranch(rootDir: string): Promise<string | undefined> {
-  return new Promise((resolveBranch) => {
-    const child = spawn("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: rootDir, windowsHide: true });
-    let output = "";
-    child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
-    child.on("error", () => resolveBranch(undefined));
-    child.on("close", (code) => resolveBranch(code === 0 ? output.trim() || undefined : undefined));
-  });
-}
-
-async function saveCommand(rootDir: string, command: CommandProfilePayload, originalName?: string): Promise<void> {
-  const config = await loadConfig(rootDir);
-  const name = command.name?.trim();
-  if (!name) throw new Error("Укажите имя команды.");
-  if (!/^[\p{L}\p{N}_ -]+$/u.test(name)) throw new Error("Имя команды может содержать буквы, цифры, пробелы, _ и -.");
-  if (!command.team && !command.team_config) throw new Error("Опишите команду исполнителей.");
-  if (!command.task && !command.task_template) throw new Error("Укажите task или task_template.");
-
-  const saved: CommandConfig = {
-    name,
-    description: command.description?.trim() || undefined,
-    team: command.team,
-    task: command.task?.trim() || undefined,
-    task_template: command.task_template?.trim() || undefined
-  };
-
-  const team = command.team_config ?? config.teams.get(command.team);
-  if (!team) throw new Error("Команда исполнителей не найдена.");
-  const employeeNames = team.members?.length ? team.members : [...new Set(Object.values(team.flow.steps).map((step) => step.employee))];
-  const employees = command.employees?.length
-    ? command.employees
-    : employeeNames.map((employeeName) => config.employees.get(employeeName)).filter(Boolean) as EmployeeConfig[];
-  const roles = command.roles ?? Object.fromEntries(employees.map((employee) => [employee.role, config.roles.get(employee.role) ?? ""]));
-  await saveGlobalRoles(roles);
-  const profile: GlobalCommandProfile = {
-    command: saved,
-    team: team as TeamConfig,
-    employees
-  };
-  await saveGlobalCommandProfile(profile);
-}
-
-async function startRun(rootDir: string, command: string, input: string, sessionId: string | undefined): Promise<RunRecord> {
-  const abortController = new AbortController();
-  let resolveStarted = (): void => {};
-  const started = new Promise<void>((resolve) => { resolveStarted = resolve; });
-  const record: RunRecord = { runId: `pending-${Date.now()}`, events: [], clients: new Set(), abortController, done: false, started, resolveStarted };
-
-  void (async () => {
-    let completedEvent: RunProgressEvent | undefined;
-    const transcriptWrites: Promise<void>[] = [];
-    try {
-      await appendSession(rootDir, sessionId, { role: "user", command, content: input });
-      const result = await runConfiguredCommand(command, input, rootDir, {
-        quiet: true,
-        abortSignal: abortController.signal,
-        onEvent: (event) => {
-          if (event.type === "run_started") {
-            runs.delete(record.runId);
-            record.runId = event.runId;
-            runs.set(record.runId, record);
-            record.resolveStarted();
-          }
-          if (event.type === "step_started") {
-            transcriptWrites.push(appendSession(rootDir, sessionId, {
-              role: "event",
-              kind: "step_started",
-              command,
-              runId: event.runId,
-              step: event.step,
-              employee: event.employee,
-              content: `${event.employee} начал шаг ${event.step}`
-            }));
-          }
-          if (event.type === "provider_event") {
-            const content = renderProviderEvent(event.event);
-            transcriptWrites.push(appendSession(rootDir, sessionId, {
-              role: event.event.type === "text" ? "assistant" : "event",
-              kind: `provider_${event.event.type}`,
-              command,
-              runId: event.runId,
-              step: event.step,
-              employee: event.employee,
-              event: event.event,
-              content
-            }));
-          }
-          if (event.type === "step_completed") {
-            transcriptWrites.push(appendSession(rootDir, sessionId, {
-              role: "assistant",
-              kind: "step_result",
-              command,
-              runId: event.runId,
-              step: event.step,
-              employee: event.employee,
-              status: event.status,
-              reasoning: event.reasoning,
-              artifact: event.artifact,
-              content: event.summary
-            }));
-          }
-          if (event.type === "run_completed") {
-            completedEvent = event;
-            return;
-          }
-          publish(record, event);
-        }
-      });
-      publish(record, { type: "result", reasoning: result.state.last_result?.reasoning_summary, summary: result.state.last_result?.summary });
-      if (completedEvent) publish(record, completedEvent);
-      await Promise.all(transcriptWrites);
-      await appendSession(rootDir, sessionId, { role: "event", kind: "run_completed", command, content: `Запуск завершён: ${result.status}`, runId: result.runId, status: result.status });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      publish(record, { type: "error", message });
-      await appendSession(rootDir, sessionId, { role: "event", kind: "run_error", command, content: message });
-      record.resolveStarted();
-    } finally {
-      record.done = true;
-      closeClients(record);
-    }
-  })();
-
-  runs.set(record.runId, record);
-  await record.started;
-  return record;
-}
-
-function publish(record: RunRecord, event: RunProgressEvent | Record<string, unknown>): void {
-  record.events.push(event);
-  for (const client of record.clients) writeSse(client, event);
-}
-
-function renderProviderEvent(event: ProviderRunEvent): string {
-  if (event.type === "reasoning") return event.text ?? "";
-  if (event.type === "text") return event.text ?? "";
-  if (event.type === "tool") return [event.tool, event.status, event.title].filter(Boolean).join(" · ") || "Tool event";
-  if (event.type === "step") return event.reason ? `OpenCode step ${event.status}: ${event.reason}` : `OpenCode step ${event.status}`;
-  return JSON.stringify(event);
-}
-
-function attachRunEvents(res: ServerResponse, runId: string): void {
-  const record = runs.get(runId);
-  if (!record) {
-    res.statusCode = 404;
-    res.end("Run not found");
-    return;
-  }
-  res.writeHead(200, {
-    "content-type": "text/event-stream",
-    "cache-control": "no-cache",
-    connection: "keep-alive"
-  });
-  record.clients.add(res);
-  for (const event of record.events) writeSse(res, event);
-  if (record.done) res.end();
-  res.on("close", () => record.clients.delete(res));
-}
-
-function writeSse(res: ServerResponse, event: unknown): void {
-  res.write(`data: ${JSON.stringify(event)}\n\n`);
-}
-
-function closeClients(record: RunRecord): void {
-  for (const client of record.clients) client.end();
-  record.clients.clear();
-}
-
-async function listSessions(rootDir: string): Promise<Array<{ id: string; title: string; mtime: number }>> {
-  const config = await loadConfig(rootDir);
-  const dir = join(config.aiTeamDir, "sessions");
-  await mkdir(dir, { recursive: true });
-  const entries = (await readdir(dir)).filter((entry) => entry.endsWith(".jsonl"));
-  const sessions = await Promise.all(entries.map(async (entry) => {
-    const path = join(dir, entry);
-    return { id: entry, title: await sessionTitle(path), mtime: (await stat(path)).mtimeMs };
-  }));
-  return sessions.sort((a, b) => b.mtime - a.mtime);
-}
-
-async function sessionTitle(path: string): Promise<string> {
-  const content = await readFile(path, "utf8").catch(() => "");
-  for (const line of content.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const message = JSON.parse(line) as { role?: string; content?: string; title?: string };
-    const title = message.title ?? (message.role === "user" ? message.content : undefined);
-    if (title?.trim()) return title.trim().replace(/\s+/g, " ").slice(0, 90);
-  }
-  return "Новая задача";
-}
-
-async function createSession(rootDir: string): Promise<{ id: string }> {
-  const config = await loadConfig(rootDir);
-  const dir = join(config.aiTeamDir, "sessions");
-  await mkdir(dir, { recursive: true });
-  const id = `web-session-${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}.jsonl`;
-  await appendFile(join(dir, id), "", "utf8");
-  return { id };
-}
-
-async function readSession(rootDir: string, id: string, page: { offset?: number; limit?: number } = {}): Promise<{ messages: unknown[]; total: number; offset: number; hasMoreBefore: boolean }> {
-  const config = await loadConfig(rootDir);
-  const path = join(config.aiTeamDir, "sessions", basename(id));
-  const content = await readFile(path, "utf8").catch(() => "");
-  const messages = content.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
-  const total = messages.length;
-  const limit = Math.max(1, page.limit ?? (total || 1));
-  const offset = Math.max(0, Math.min(page.offset ?? Math.max(0, total - limit), total));
-  const end = Math.min(total, offset + limit);
-  return { messages: messages.slice(offset, end), total, offset, hasMoreBefore: offset > 0 };
-}
-
-function optionalInteger(value: string | null): number | undefined {
-  if (value === null || value.trim() === "") return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-async function appendSession(rootDir: string, id: string | undefined, message: Record<string, unknown>): Promise<void> {
-  if (!id) return;
-  const config = await loadConfig(rootDir);
-  const path = join(config.aiTeamDir, "sessions", basename(id));
-  await appendFile(path, `${JSON.stringify({ timestamp: new Date().toISOString(), ...message })}\n`, "utf8");
 }
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {
@@ -383,11 +76,6 @@ async function readJson<T>(req: IncomingMessage): Promise<T> {
 function sendJson(res: ServerResponse, value: unknown): void {
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify(value));
-}
-
-function sendHtml(res: ServerResponse, value: string): void {
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(value);
 }
 
 async function serveWebAsset(res: ServerResponse, pathname: string): Promise<void> {

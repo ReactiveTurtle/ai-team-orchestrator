@@ -1,10 +1,10 @@
 :root {
   color-scheme: light;
-  --bg: #f4f1ea;
-  --panel: #fffdf8;
-  --panel-soft: #f8f4ec;
-  --panel-raised: #efe7dc;
-  --border: #ddd2c2;
+  --bg: #f7f7f7;
+  --panel: #fff;
+  --panel-soft: #f3f3f3;
+  --panel-raised: #eaeaea;
+  --border: #ddd;
   --text: #28231f;
   --muted: #6e6257;
   --muted-2: #95887a;
@@ -14,7 +14,7 @@
   --ok: #2f7d56;
   --warn: #b87917;
   --danger: #b54848;
-  --shadow: rgba(83, 64, 42, .14);
+  --shadow: rgba(0, 0, 0, .08);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -22,7 +22,7 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 20% 0%, #fff7df 0, #f4f1ea 38%, #ece4d8 100%);
+  background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   overflow: hidden;
@@ -47,9 +47,8 @@ select {
   bottom: 16px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 8px 12px;
-  box-shadow: 0 10px 30px var(--shadow);
 }
 
 @media (max-width: 860px) {
